@@ -1,0 +1,51 @@
+{
+  "name": "basebot",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:server": "tsx index.ts",
+    "dev:client": "cd client && npm run dev",
+    "dev": "tsx index.ts",
+    "build:client": "cd client && npm run build",
+    "build": "tsc",
+    "start": "tsx index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/adapter-mariadb": "^7.3.0",
+    "@prisma/client": "^7.3.0",
+    "@types/uuid": "^10.0.0",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-validator": "^7.2.1",
+    "grammy": "^1.35.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.8.3",
+    "swagger-autogen": "^2.23.7",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^13.0.0",
+    "web-push": "^3.6.7",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^22.13.13",
+    "@types/swagger-ui-express": "^4.1.8",
+    "prisma": "^7.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.2"
+  }
+}

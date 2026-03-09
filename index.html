@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureChat</title>
+    <style>
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-input: #1a1a2e;
+            --accent: #e94560;
+            --accent-hover: #ff6b81;
+            --accent-secondary: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #a0a0b8;
+            --text-muted: #6c6c80;
+            --border: #2a2a40;
+            --msg-other: #1a1a2e;
+            --msg-self: #0f3460;
+            --success: #2ecc71;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .app-wrapper {
+            width: 100%;
+            max-width: 520px;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* ─── Join Screen ─── */
+        #join-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 32px 24px;
+            gap: 28px;
+            animation: fadeUp .5s ease;
+        }
+
+        .brand {
+            text-align: center;
+        }
+
+        .brand h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, var(--accent), #ff6b81);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .brand p {
+            color: var(--text-secondary);
+            margin-top: 6px;
+            font-size: .95rem;
+        }
+
+        .join-card {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: var(--shadow);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .input-group label {
+            font-size: .78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            color: var(--text-secondary);
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: .95rem;
+            transition: border-color .2s, box-shadow .2s;
+            outline: none;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(233, 69, 96, .15);
+        }
+
+        .input-field::placeholder {
+            color: var(--text-muted);
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: .95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s, transform .1s, box-shadow .2s;
+        }
+
+        .btn:active {
+            transform: scale(.97);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 4px 20px rgba(233, 69, 96, .35);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-ghost:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: .82rem;
+            border-radius: 8px;
+        }
+
+        /* ─── Chat Screen ─── */
+        #chat-screen {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            height: 100vh;
+            height: 100dvh;
+            animation: fadeUp .4s ease;
+        }
+
+        .chat-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            gap: 10px;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .topbar-left .room-badge {
+            padding: 4px 10px;
+            background: var(--accent-secondary);
+            border-radius: 20px;
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+
+        .topbar-left .room-label {
+            font-weight: 700;
+            font-size: 1rem;
+            white-space: nowrap;
+        }
+
+        .topbar-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: background .2s, color .2s;
+            font-size: 1rem;
+        }
+
+        .icon-btn:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .icon-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        /* ─── Encryption Bar ─── */
+        .encryption-bar {
+            display: none;
+            padding: 12px 18px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            gap: 10px;
+            align-items: center;
+            animation: slideDown .25s ease;
+            flex-shrink: 0;
+        }
+
+        .encryption-bar.show {
+            display: flex;
+        }
+
+        .encryption-bar .input-field {
+            flex: 1;
+            padding: 9px 12px;
+            font-size: .85rem;
+        }
+
+        .encryption-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: .78rem;
+            color: var(--success);
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .encryption-status .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        /* ─── Messages ─── */
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 18px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: var(--bg-primary);
+        }
+
+        .messages-area::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .messages-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .messages-area::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 10px;
+        }
+
+        .msg-bubble {
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: .92rem;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .msg.other {
+            align-self: flex-start;
+        }
+
+        .msg.other .msg-bubble {
+            background: var(--msg-other);
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg.self {
+            align-self: flex-end;
+        }
+
+        .msg.self .msg-bubble {
+            background: var(--msg-self);
+            border-bottom-right-radius: 4px;
+        }
+
+        .msg.system {
+            align-self: center;
+        }
+
+        .msg.system .msg-bubble {
+            background: transparent;
+            color: var(--text-muted);
+            font-size: .82rem;
+            font-style: italic;
+        }
+
+        .msg-sender {
+            font-size: .72rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+        }
+
+        .msg-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .msg-time {
+            font-size: .68rem;
+            color: var(--text-muted);
+        }
+
+        .msg-encrypted-badge {
+            font-size: .65rem;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .msg-encrypted-badge.ok {
+            background: rgba(46, 204, 113, .15);
+            color: var(--success);
+        }
+
+        .msg-encrypted-badge.fail {
+            background: rgba(231, 76, 60, .15);
+            color: var(--danger);
+        }
+
+        .msg-raw {
+            color: var(--text-muted);
+            font-family: 'Courier New', monospace;
+            font-size: .82rem;
+            opacity: .85;
+        }
+
+        /* ─── Input Area ─── */
+        .input-area {
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .input-row-name {
+            display: flex;
+            gap: 8px;
+        }
+
+        .input-row-name .input-field {
+            flex: 1;
+            padding: 10px 12px;
+            font-size: .88rem;
+        }
+
+        .input-row-msg {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .input-row-msg .input-field {
+            flex: 1;
+            padding: 10px 14px;
+            font-size: .92rem;
+            min-height: 44px;
+        }
+
+        /* Auto-resize textarea */
+        .msg-textarea {
+            resize: none;
+            overflow-y: auto;
+            max-height: 120px;
+            line-height: 1.4;
+            font-family: inherit;
+        }
+
+        /* Attach button */
+        .attach-btn {
+            flex-shrink: 0;
+        }
+
+        /* File preview before send */
+        .file-preview-bar {
+            display: none;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border);
+            align-items: center;
+            gap: 10px;
+            font-size: .82rem;
+            color: var(--text-secondary);
+            animation: slideDown .2s ease;
+        }
+
+        .file-preview-bar.show {
+            display: flex;
+        }
+
+        .file-preview-bar .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-preview-bar .remove-file {
+            cursor: pointer;
+            color: var(--danger);
+            font-weight: 700;
+            font-size: 1rem;
+            background: none;
+            border: none;
+            padding: 0 4px;
+        }
+
+        /* Reply preview bar */
+        .reply-preview-bar {
+            display: none;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            align-items: center;
+            gap: 10px;
+            font-size: .82rem;
+            color: var(--text-secondary);
+            animation: slideDown .2s ease;
+        }
+
+        .reply-preview-bar.show {
+            display: flex;
+        }
+
+        .reply-preview-bar .reply-text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .reply-preview-bar .reply-name {
+            font-weight: 700;
+            color: var(--accent);
+            margin-right: 6px;
+        }
+
+        .reply-preview-bar .cancel-reply {
+            cursor: pointer;
+            color: var(--danger);
+            font-weight: 700;
+            font-size: 1rem;
+            background: none;
+            border: none;
+            padding: 0 4px;
+        }
+
+        /* Reply block inside message bubble */
+        .msg-reply-block {
+            background: rgba(255, 255, 255, .05);
+            border-left: 3px solid var(--accent);
+            padding: 4px 10px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            font-size: .78rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .msg-reply-block .reply-author {
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        /* File rendering in messages  */
+        .msg-file-image {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 10px;
+            margin-top: 6px;
+            cursor: pointer;
+        }
+
+        .msg-file-audio {
+            width: 100%;
+            margin-top: 6px;
+            border-radius: 8px;
+        }
+
+        .msg-file-other {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, .06);
+            border-radius: 8px;
+            font-size: .82rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+
+        .msg-file-other:hover {
+            background: rgba(255, 255, 255, .1);
+            color: var(--text-primary);
+        }
+
+        /* Reply button on messages */
+        .msg-reply-btn {
+            display: none;
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: .72rem;
+            padding: 2px 8px;
+            z-index: 2;
+        }
+
+        .msg-copy-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: .72rem;
+            padding: 2px 8px;
+        }
+
+        .msg:hover .msg-reply-btn {
+            display: block;
+        }
+
+        .msg {
+            max-width: 82%;
+            animation: msgIn .25s ease;
+            position: relative;
+        }
+
+        /* Loading more indicator */
+        .load-more-bar {
+            text-align: center;
+            padding: 8px;
+            font-size: .78rem;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .load-more-bar:hover {
+            color: var(--text-secondary);
+        }
+
+        .send-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--accent);
+            border: none;
+            color: #fff;
+            font-size: 1.15rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background .2s, transform .1s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .send-btn:active {
+            transform: scale(.93);
+        }
+
+        /* ─── Modal ─── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 24px;
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            animation: fadeUp .3s ease;
+            box-shadow: var(--shadow);
+        }
+
+        .modal-box h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .modal-box p {
+            font-size: .85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        /* ─── Toast ─── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 20px;
+            font-size: .85rem;
+            color: var(--text-primary);
+            box-shadow: var(--shadow);
+            z-index: 200;
+            opacity: 0;
+            transition: transform .3s ease, opacity .3s ease;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ─── Animations ─── */
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes msgIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ─── Responsive ─── */
+        @media (min-width: 521px) {
+            body {
+                padding: 0;
+                background: #0a0a14;
+            }
+
+            .app-wrapper {
+                border-left: 1px solid var(--border);
+                border-right: 1px solid var(--border);
+                background: var(--bg-primary);
+            }
+        }
+
+        @media (max-width: 520px) {
+            .app-wrapper {
+                max-width: 100%;
+            }
+
+            .brand h1 {
+                font-size: 1.8rem;
+            }
+
+            .join-card {
+                padding: 22px 18px;
+            }
+
+            .chat-topbar {
+                padding: 12px 14px;
+            }
+
+            .topbar-left .room-badge {
+                max-width: 100px;
+                font-size: .72rem;
+            }
+
+            .messages-area {
+                padding: 14px 12px;
+            }
+
+            .msg {
+                max-width: 90%;
+            }
+
+            .input-area {
+                padding: 10px 12px;
+            }
+
+            .encryption-bar {
+                padding: 10px 14px;
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .brand h1 {
+                font-size: 1.5rem;
+            }
+
+            .topbar-left .room-label {
+                font-size: .88rem;
+            }
+
+            .msg-bubble {
+                font-size: .85rem;
+                padding: 8px 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <!-- ─── Join Screen ─── -->
+        <div id="join-screen">
+            <div class="brand">
+                <h1>SecureChat</h1>
+                <p>End-to-end encrypted messaging</p>
+            </div>
+            <div class="join-card">
+                <div class="input-group">
+                    <label>Room ID</label>
+                    <input type="text" id="chat-id-input" class="input-field" placeholder="Enter room identifier">
+                </div>
+                <div class="input-group">
+                    <label>Your Name</label>
+                    <input type="text" id="join-name-input" class="input-field" placeholder="Display name">
+                </div>
+                <button id="join-btn" class="btn btn-primary" style="margin-top:4px">Join Room</button>
+            </div>
+        </div>
+
+        <!-- ─── Chat Screen ─── -->
+        <div id="chat-screen">
+            <div class="chat-topbar">
+                <div class="topbar-left">
+                    <span class="room-label">SecureChat</span>
+                    <span class="room-badge" id="room-badge">—</span>
+                </div>
+                <div class="topbar-actions">
+                    <button class="icon-btn" id="key-toggle-btn" title="Encryption settings">&#128274;</button>
+                    <button class="icon-btn" id="leave-btn" title="Leave room">&#10005;</button>
+                </div>
+            </div>
+
+            <div class="encryption-bar" id="encryption-bar">
+                <input type="password" id="secret-key-input" class="input-field" placeholder="Secret key"
+                    autocomplete="off">
+                <button class="btn btn-sm btn-primary" id="set-key-btn">Set</button>
+                <div class="encryption-status" id="enc-status">
+                    <span class="dot"></span>
+                    <span>Encrypted</span>
+                </div>
+            </div>
+
+            <div class="messages-area" id="messages-area">
+                <!-- Messages render here -->
+            </div>
+
+            <div class="reply-preview-bar" id="reply-preview-bar">
+                <span class="reply-name" id="reply-preview-name"></span>
+                <span class="reply-text" id="reply-preview-text"></span>
+                <button class="cancel-reply" id="cancel-reply-btn">&#10005;</button>
+            </div>
+
+            <div class="file-preview-bar" id="file-preview-bar">
+                <span>&#128206;</span>
+                <span class="file-name" id="file-preview-name"></span>
+                <button class="remove-file" id="remove-file-btn">&#10005;</button>
+            </div>
+
+            <div class="input-area">
+                <div class="input-row-name">
+                    <input type="text" id="name-input" class="input-field" placeholder="Your name">
+                </div>
+                <div class="input-row-msg">
+                    <textarea id="message-input" class="input-field msg-textarea" placeholder="Type a message..."
+                        rows="1"></textarea>
+                    <input type="file" id="file-input" style="display:none">
+                    <button class="icon-btn attach-btn" id="attach-btn" title="Attach file">&#128206;</button>
+                    <button class="send-btn" id="send-btn" title="Send">&#9654;</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Modal -->
+    <div class="modal-overlay" id="key-modal">
+        <div class="modal-box">
+            <h3>&#128274; Change Secret Key</h3>
+            <p>All participants must use the same secret key to read messages. The key is only stored in your browser
+                until you refresh the page.</p>
+            <div class="input-group">
+                <label>New Secret Key</label>
+                <input type="text" id="modal-key-input" class="input-field" placeholder="Enter new secret key"
+                    autocomplete="off">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost btn-sm" id="modal-cancel-btn">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="modal-save-btn">Save Key</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+    <!-- فقط کلید عمومی، بدون newline یا spaces -->
+    <span id="vapid-public-key"
+        data-key="BNNZGwjWZ5U3LrMkekkLknLDpfFXoDSeKOPohCLd3jRWnFgzWlFPNbO36sVRNjOE-LYI_Igkh0Q8aCadb7_OzVQ"
+        style="display:none;"></span>
+
+    <script>
+        // ─── State ───
+        let currentChatId = null;
+        let currentUserName = '';
+        let refreshInterval = null;
+        const DEFAULT_SECRET_KEY = 'securechat-default-key-2024';
+        let secretKey = DEFAULT_SECRET_KEY;
+
+        // Pagination
+        let loadedMessages = []; // all messages we have in DOM, by id
+        let totalOnServer = 0;
+        let hasMore = false;
+        let isLoadingMore = false;
+        let currentOffset = 0;
+        const PAGE_SIZE = 10;
+
+        // Reply
+        let replyToMsg = null; // { id, name, text }
+
+        // File
+        let pendingFile = null;
+
+        // ─── DOM refs ───
+        const joinScreen = document.getElementById('join-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const chatIdInput = document.getElementById('chat-id-input');
+        const joinNameInput = document.getElementById('join-name-input');
+        const joinBtn = document.getElementById('join-btn');
+        const roomBadge = document.getElementById('room-badge');
+        const messagesArea = document.getElementById('messages-area');
+        const nameInput = document.getElementById('name-input');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const keyToggleBtn = document.getElementById('key-toggle-btn');
+        const encryptionBar = document.getElementById('encryption-bar');
+        const secretKeyInput = document.getElementById('secret-key-input');
+        const setKeyBtn = document.getElementById('set-key-btn');
+        const encStatus = document.getElementById('enc-status');
+        const leaveBtn = document.getElementById('leave-btn');
+        const keyModal = document.getElementById('key-modal');
+        const modalKeyInput = document.getElementById('modal-key-input');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+        const modalSaveBtn = document.getElementById('modal-save-btn');
+        const toastEl = document.getElementById('toast');
+        const fileInput = document.getElementById('file-input');
+        const attachBtn = document.getElementById('attach-btn');
+        const filePreviewBar = document.getElementById('file-preview-bar');
+        const filePreviewName = document.getElementById('file-preview-name');
+        const removeFileBtn = document.getElementById('remove-file-btn');
+        const replyPreviewBar = document.getElementById('reply-preview-bar');
+        const replyPreviewName = document.getElementById('reply-preview-name');
+        const replyPreviewText = document.getElementById('reply-preview-text');
+        const cancelReplyBtn = document.getElementById('cancel-reply-btn');
+
+        // ─── Encryption (AES-GCM via Web Crypto API) ───
+        const ENC_PREFIX = 'ENC::';
+        const enc = new TextEncoder();
+        const dec = new TextDecoder();
+
+        async function deriveKey(password) {
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: enc.encode('securechat-salt'), iterations: 100000, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        function arrayBufToBase64(buf) {
+            let binary = '';
+            const bytes = new Uint8Array(buf);
+            bytes.forEach(b => binary += String.fromCharCode(b));
+            return btoa(binary);
+        }
+
+        function base64ToArrayBuf(b64) {
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        async function encryptMessage(plaintext) {
+            try {
+                const key = await deriveKey(secretKey);
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const ciphertext = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv },
+                    key,
+                    enc.encode(plaintext)
+                );
+                const payload = arrayBufToBase64(iv) + '.' + arrayBufToBase64(ciphertext);
+                return ENC_PREFIX + payload;
+            } catch (e) {
+                console.error('Encryption failed:', e);
+                return plaintext;
+            }
+        }
+
+        async function decryptMessage(text) {
+            if (!text.startsWith(ENC_PREFIX)) {
+                return { decrypted: text, wasEncrypted: false, success: true };
+            }
+            try {
+                const payload = text.slice(ENC_PREFIX.length);
+                const [ivB64, ctB64] = payload.split('.');
+                const iv = new Uint8Array(base64ToArrayBuf(ivB64));
+                const ciphertext = base64ToArrayBuf(ctB64);
+                const key = await deriveKey(secretKey);
+                const plainBuf = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv },
+                    key,
+                    ciphertext
+                );
+                return { decrypted: dec.decode(plainBuf), wasEncrypted: true, success: true };
+            } catch (e) {
+                return { decrypted: text, wasEncrypted: true, success: false };
+            }
+        }
+
+        // ─── Toast ───
+        let toastTimer = null;
+        function showToast(msg) {
+            toastEl.textContent = msg;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2500);
+        }
+
+        // ─── URL check ───
+        function getChatIdFromUrl() {
+            const path = window.location.pathname;
+            if (path.startsWith('/chat/')) {
+                const parts = path.split('/');
+                return parts[2] || null;
+            }
+            return null;
+        }
+
+        // ─── Init ───
+        function initApp() {
+            secretKeyInput.value = secretKey;
+
+            const urlChatId = getChatIdFromUrl();
+            if (urlChatId) {
+                joinChat(urlChatId);
+            }
+
+            // Join
+            joinBtn.addEventListener('click', handleJoin);
+            chatIdInput.addEventListener('keypress', e => { if (e.key === 'Enter') handleJoin(); });
+            joinNameInput.addEventListener('keypress', e => { if (e.key === 'Enter') handleJoin(); });
+
+            // Chat - Enter sends (Shift+Enter for newline)
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter' && e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Textarea auto-resize
+            messageInput.addEventListener('input', () => {
+                messageInput.style.height = 'auto';
+                messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+            });
+
+            // File attach
+            attachBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files && fileInput.files[0]) {
+                    pendingFile = fileInput.files[0];
+                    filePreviewName.textContent = pendingFile.name;
+                    filePreviewBar.classList.add('show');
+                }
+            });
+            removeFileBtn.addEventListener('click', clearPendingFile);
+
+            // Reply cancel
+            cancelReplyBtn.addEventListener('click', cancelReply);
+
+            // Encryption bar toggle
+            keyToggleBtn.addEventListener('click', () => {
+                encryptionBar.classList.toggle('show');
+                keyToggleBtn.classList.toggle('active');
+            });
+
+            // Set key inline
+            setKeyBtn.addEventListener('click', () => {
+                const k = secretKeyInput.value.trim();
+                if (k) {
+                    secretKey = k;
+                    showToast('Secret key updated');
+                    reloadAllMessages();
+                }
+            });
+
+            // Leave
+            leaveBtn.addEventListener('click', () => {
+                clearInterval(refreshInterval);
+                currentChatId = null;
+                loadedMessages = [];
+                totalOnServer = 0;
+                hasMore = false;
+                currentOffset = 0;
+                chatScreen.style.display = 'none';
+                joinScreen.style.display = 'flex';
+            });
+
+            // Scroll to top = load more
+            messagesArea.addEventListener('scroll', () => {
+                if (messagesArea.scrollTop < 60 && hasMore && !isLoadingMore) {
+                    loadOlderMessages();
+                }
+            });
+
+            // Modal
+            modalCancelBtn.addEventListener('click', () => keyModal.classList.remove('show'));
+            modalSaveBtn.addEventListener('click', () => {
+                const k = modalKeyInput.value.trim();
+                if (k) {
+                    secretKey = k;
+                    secretKeyInput.value = k;
+                    keyModal.classList.remove('show');
+                    showToast('Secret key updated');
+                    reloadAllMessages();
+                }
+            });
+            keyModal.addEventListener('click', e => {
+                if (e.target === keyModal) keyModal.classList.remove('show');
+            });
+        }
+
+        function clearPendingFile() {
+            pendingFile = null;
+            fileInput.value = '';
+            filePreviewBar.classList.remove('show');
+        }
+
+        function setReplyTo(msg) {
+            replyToMsg = msg;
+            replyPreviewName.textContent = msg.name;
+            replyPreviewText.textContent = msg.text || '(file)';
+            replyPreviewBar.classList.add('show');
+            messageInput.focus();
+        }
+
+        function cancelReply() {
+            replyToMsg = null;
+            replyPreviewBar.classList.remove('show');
+        }
+
+        function handleJoin() {
+            const id = chatIdInput.value.trim();
+            const name = joinNameInput.value.trim();
+            if (!id) { showToast('Enter a room ID'); return; }
+            if (name) {
+                currentUserName = name;
+                nameInput.value = name;
+            }
+            joinChat(id);
+        }
+
+        async function joinChat(chatId) {
+            currentChatId = chatId;
+            roomBadge.textContent = chatId;
+            joinScreen.style.display = 'none';
+            chatScreen.style.display = 'flex';
+            loadedMessages = [];
+            totalOnServer = 0;
+            hasMore = false;
+            currentOffset = 0;
+            messagesArea.innerHTML = '';
+            clearInterval(refreshInterval);
+            refreshInterval = setInterval(pollNewMessages, 4000);
+            await loadInitialMessages();
+            messageInput.focus();
+
+
+            // ثبت push (در همینجا)
+            await registerPush();   // <‑‑ اضافه شد
+        }
+
+        // Load last PAGE_SIZE messages (initial load)
+        async function loadInitialMessages() {
+            if (!currentChatId) return;
+            try {
+                const res = await fetch('/api/' + currentChatId + '?offset=0&limit=' + PAGE_SIZE);
+                if (!res.ok) throw new Error('Server error');
+                const data = await res.json();
+                totalOnServer = data.total;
+                hasMore = data.hasMore;
+                messagesArea.innerHTML = '';
+                loadedMessages = [];
+                if (data.messages && data.messages.length > 0) {
+                    if (hasMore) addLoadMoreBar();
+                    for (const m of data.messages) {
+                        await renderMessage(m);
+                        loadedMessages.push(m);
+                    }
+                } else {
+                    addSystemMessage('No messages yet. Start the conversation!');
+                }
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            } catch (e) {
+                console.error('Load error:', e);
+            }
+        }
+
+        // Poll for new messages (only append new ones)
+        async function pollNewMessages() {
+            if (!currentChatId) return;
+            try {
+                // Ask for last PAGE_SIZE msgs from offset 0
+                const res = await fetch('/api/' + currentChatId + '?offset=0&limit=' + PAGE_SIZE);
+                if (!res.ok) return;
+                const data = await res.json();
+                totalOnServer = data.total;
+
+                if (!data.messages || data.messages.length === 0) return;
+
+                // Find messages we don't have yet
+                const existingIds = new Set(loadedMessages.map(m => m.id));
+                const newMsgs = data.messages.filter(m => !existingIds.has(m.id));
+
+                if (newMsgs.length === 0) return;
+
+                const wasAtBottom = messagesArea.scrollHeight - messagesArea.scrollTop - messagesArea.clientHeight < 80;
+
+                for (const m of newMsgs) {
+                    await renderMessage(m);
+                    loadedMessages.push(m);
+                }
+
+                if (wasAtBottom) {
+                    messagesArea.scrollTop = messagesArea.scrollHeight;
+                }
+            } catch (e) {
+                console.error('Poll error:', e);
+            }
+        }
+
+        // Load older messages when scrolled to top
+        async function loadOlderMessages() {
+            if (!currentChatId || isLoadingMore || !hasMore) return;
+            isLoadingMore = true;
+            try {
+                const offset = loadedMessages.length;
+                const res = await fetch('/api/' + currentChatId + '?offset=' + offset + '&limit=' + PAGE_SIZE);
+                if (!res.ok) return;
+                const data = await res.json();
+                hasMore = data.hasMore;
+                totalOnServer = data.total;
+
+                // Remove "load more" bar
+                const existingBar = messagesArea.querySelector('.load-more-bar');
+                if (existingBar) existingBar.remove();
+
+                if (data.messages && data.messages.length > 0) {
+                    const prevScrollHeight = messagesArea.scrollHeight;
+                    const frag = document.createDocumentFragment();
+
+                    if (hasMore) {
+                        const bar = document.createElement('div');
+                        bar.className = 'load-more-bar';
+                        bar.textContent = 'Loading older messages...';
+                        frag.appendChild(bar);
+                    }
+
+                    for (const m of data.messages) {
+                        const el = await buildMessageElement(m);
+                        frag.appendChild(el);
+                        loadedMessages.unshift(m);
+                    }
+
+                    messagesArea.insertBefore(frag, messagesArea.firstChild);
+                    // Preserve scroll position
+                    messagesArea.scrollTop = messagesArea.scrollHeight - prevScrollHeight;
+                }
+            } catch (e) {
+                console.error('Load more error:', e);
+            } finally {
+                isLoadingMore = false;
+            }
+        }
+
+        // Full re-render (used when secret key changes)
+        async function reloadAllMessages() {
+            if (!currentChatId) return;
+            const msgs = loadedMessages.slice();
+            messagesArea.innerHTML = '';
+            if (hasMore) addLoadMoreBar();
+            for (const m of msgs) {
+                const el = await buildMessageElement(m);
+                messagesArea.appendChild(el);
+            }
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        function addLoadMoreBar() {
+            const bar = document.createElement('div');
+            bar.className = 'load-more-bar';
+            bar.textContent = 'Scroll up for older messages';
+            messagesArea.appendChild(bar);
+        }
+
+        function addSystemMessage(text) {
+            const d = document.createElement('div');
+            d.className = 'msg system';
+            d.innerHTML = '<div class="msg-bubble">' + escapeHtml(text) + '</div>';
+            messagesArea.appendChild(d);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        // Render a message and append to messagesArea
+        async function renderMessage(msg) {
+            const el = await buildMessageElement(msg);
+            messagesArea.appendChild(el);
+        }
+
+        // Build a message DOM element from a message object
+        async function buildMessageElement(msg) {
+            const result = msg.text ? await decryptMessage(msg.text) : { decrypted: '', wasEncrypted: false, success: true };
+
+            const isSelf = msg.name === currentUserName;
+
+            const d = document.createElement('div');
+            d.className = 'msg ' + (isSelf ? 'self' : 'other');
+            d.setAttribute('data-msg-id', msg.id);
+
+            let html = '<div class="msg-bubble">';
+
+            // Reply block
+            if (msg.replyToId) {
+                const repliedMsg = loadedMessages.find(m => m.id === msg.replyToId);
+                let replyName = '?';
+                let replyText = '...';
+                if (repliedMsg) {
+                    replyName = repliedMsg.name;
+                    if (repliedMsg.text) {
+                        const rResult = await decryptMessage(repliedMsg.text);
+                        replyText = rResult.success ? rResult.decrypted : '(encrypted)';
+                    } else {
+                        replyText = '(file)';
+                    }
+                }
+                html += '<div class="msg-reply-block" onclick="scrollToMessage(' + msg.replyToId + ')">' +
+                    '<span class="reply-author">' + escapeHtml(replyName) + '</span> ' +
+                    escapeHtml(replyText.slice(0, 60)) +
+                    '</div>';
+            }
+
+            // Sender
+            if (!isSelf) {
+                html += '<div class="msg-sender">' + escapeHtml(msg.name) + '</div>';
+            }
+
+            // Text
+            let badgeHtml = '';
+            if (result.wasEncrypted && result.success) {
+                badgeHtml = '<span class="msg-encrypted-badge ok">&#128274; decrypted</span>';
+            } else if (result.wasEncrypted && !result.success) {
+                badgeHtml = '<span class="msg-encrypted-badge fail">&#128275; key mismatch</span>';
+            }
+
+            // متن اصلی (رمز‑گشایی شده یا خام)
+            let displayedText = '';
+            if (result.success && result.decrypted) {
+                displayedText = escapeHtml(result.decrypted);
+                html += '<div>' + displayedText + '</div>';
+            } else if (!result.success && result.wasEncrypted) {
+                let decrypted = result.decrypted;
+                while (decrypted.includes('\n')) {
+                    decrypted = decrypted.replace('\n', '<br>');
+                }
+                displayedText = escapeHtml(decrypted);
+                html += '<div class="msg-raw">' + displayedText + '</div>';
+            }
+
+            // File
+            if (msg.file) {
+                if (msg.fileType === 'image') {
+                    html += '<img class="msg-file-image" src="' + escapeHtml(msg.file) + '" alt="image" loading="lazy">';
+                } else if (msg.fileType === 'audio') {
+                    html += '<audio class="msg-file-audio" controls src="' + escapeHtml(msg.file) + '"></audio>';
+                } else {
+                    const fname = msg.file.split('/').pop();
+                    html += '<a class="msg-file-other" href="' + escapeHtml(msg.file) + '" target="_blank" download>&#128196; ' + escapeHtml(fname) + '</a>';
+                }
+            }
+
+            /* ---------- دکمه Copy Text ---------- */
+            // متن قابل کپی: اگر پیام رمزگشایی شده باشد از آن استفاده می‌کنیم، در غیر این صورت از متن خام.
+            const copyText = (result.success && result.decrypted) ? result.decrypted : (msg.text || '');
+            const safeCopyText = escapeHtml(copyText).replace(/'/g, "\\'");   // برای قرار دادن داخل attribute
+            const btnCopy = `<button class="msg-copy-btn" onclick="navigator.clipboard.writeText('${safeCopyText}')
+                .then(()=> console.log('متن کپی شد!'))
+                .catch(()=> console.log('کپی کردن ناموفق بود.'))">Copy</button>`;
+
+            // Meta
+            const timeStr = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            html += '<div class="msg-meta">' +
+                '<span class="msg-time">' + timeStr + '</span>' +
+                badgeHtml + btnCopy +
+                '</div>';
+
+            html += '</div>';
+
+            // Reply button
+            html += '<button class="msg-reply-btn" onclick="setReplyTo({id:' + msg.id + ',name:\'' + escapeHtml(msg.name).replace(/'/g, "\\'") + '\',text:\'' + escapeHtml(result.decrypted || '').replace(/'/g, "\\'").slice(0, 50) + '\'})">Reply</button>';
+
+            d.innerHTML = html;
+            return d;
+        }
+
+        function scrollToMessage(id) {
+            const el = messagesArea.querySelector('[data-msg-id="' + id + '"]');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.style.outline = '2px solid var(--accent)';
+                setTimeout(() => el.style.outline = '', 1500);
+            }
+        }
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            let html = d.innerHTML;
+            // Unescape <br> tags that were escaped
+            html = html.replace(/&lt;br&gt;/g, '<br>');
+            return html;
+        }
+
+        // ─── Send ───
+        async function sendMessage() {
+            if (!currentChatId) return;
+            let text = messageInput.value.trim();
+
+            while (text.includes('\n')) {
+                text = text.replace('\n', '<br>')
+            }
+
+            const name = currentUserName || nameInput.value.trim();
+
+            if (!name) {
+                showToast('Enter your name');
+                return;
+            }
+            if (!text && !pendingFile) {
+                showToast('Enter a message or attach a file');
+                return;
+            }
+            currentUserName = name;
+
+            try {
+                if (pendingFile) {
+                    // Upload file
+                    const formData = new FormData();
+                    formData.append('file', pendingFile);
+                    formData.append('name', name);
+                    if (text) {
+                        const encrypted = await encryptMessage(text);
+                        formData.append('text', encrypted);
+                    } else {
+                        formData.append('text', '');
+                    }
+                    if (replyToMsg) {
+                        formData.append('replyToId', String(replyToMsg.id));
+                    }
+
+                    messageInput.value = '';
+                    messageInput.style.height = 'auto';
+                    clearPendingFile();
+                    cancelReply();
+
+                    await fetch('/api/' + currentChatId + '/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    // Text only
+                    const encrypted = await encryptMessage(text);
+                    const body = { name, text: encrypted };
+                    if (replyToMsg) body.replyToId = replyToMsg.id;
+
+                    messageInput.value = '';
+                    messageInput.style.height = 'auto';
+                    cancelReply();
+
+                    await fetch('/api/' + currentChatId, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                }
+
+                await pollNewMessages();
+            } catch (e) {
+                console.error('Send error:', e);
+                showToast('Failed to send message');
+            }
+        }
+
+        async function registerPush() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                console.warn('Push API not supported');
+                return;
+            }
+
+            try {
+                const reg = await navigator.serviceWorker.register('/service-worker.js');
+                console.log('ServiceWorker registered', reg);
+
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    console.warn('Notification permission denied');
+                    return;
+                }
+
+                const subscription = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(
+                        document.getElementById('vapid-public-key').dataset.key.trim()
+                    )
+                });
+
+                console.log('Got subscription', subscription);
+
+                // ارسال به سرور
+                const resp = await fetch(`/api/${currentChatId}/subscribe`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+
+                const data = await resp.json();
+                console.log('Subscribed on server, id:', data.subId);
+                sessionStorage.setItem('pushSubId', data.subId);
+            } catch (err) {
+                console.error('Push registration failed:', err);
+            }
+        }
+
+
+        // Helper: تبدیل Base64 URL به Uint8Array
+        function urlBase64ToUint8Array(base64String) {
+            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+            const raw = atob(base64);
+            const out = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
+            return out;
+        }
+
+        // فراخوانی هنگام ورود به چت
+        function afterJoin() {
+            // … کدهای قبلی joinChat
+            registerPush();   // <‑‑ اضافه شد
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+
+
+</body>
+
+</html>

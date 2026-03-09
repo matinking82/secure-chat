@@ -1,0 +1,11 @@
+node_modules
+dist
+*.zip
+index.js
+files/
+.env
+client/node_modules
+game/*.ts.map
+game/*.js
+game/*.d.ts
+game/*.js.map

@@ -1,0 +1,789 @@
+{
+    "meta": {
+        "title": "Iranian Card Games — Complete LLM Game-Building Reference",
+        "version": "1.0.0",
+        "language": "bilingual (Persian/English)",
+        "games_included": [
+            "Hokm 2-Player",
+            "Hokm 4-Player",
+            "Chaar Barg / Yazdah (11)"
+        ],
+        "deck": "Standard 52-card deck, no Jokers",
+        "card_rank_high_to_low": [
+            "A",
+            "K",
+            "Q",
+            "J",
+            "10",
+            "9",
+            "8",
+            "7",
+            "6",
+            "5",
+            "4",
+            "3",
+            "2"
+        ],
+        "suits": [
+            "♠ Spades (Pik)",
+            "♥ Hearts (Del)",
+            "♦ Diamonds (Khesht)",
+            "♣ Clubs (Geshniz/Ghoshniz)"
+        ],
+        "instructions_for_llm": "Use every field below to implement complete game logic, UI states, scoring, rule enforcement, edge-case handling, and AI behavior. All special terms are explained inline."
+    },
+    "games": {
+        "hokm_2player": {
+            "name": {
+                "fa": "حکم دو نفره",
+                "en": "Hokm 2-Player"
+            },
+            "description": "A simplified 2-player adaptation of classic Iranian Hokm. One player is the Hakem (حاکم / Ruler) who picks the trump suit. First to 7 round-wins takes the match.",
+            "players": 2,
+            "teams": false,
+            "deck_size": 52,
+            "roles": {
+                "hakem": {
+                    "fa": "حاکم",
+                    "en": "Hakem / Ruler",
+                    "description": "The player who selects the trump suit (Hokm). Leads the first trick of each round. Roles alternate each round based on who wins.",
+                    "who_is_hakem_first_round": "Determined by cut; higher card becomes Hakem.",
+                    "who_is_hakem_subsequent_rounds": "Winner of previous round becomes the new Hakem."
+                },
+                "dealer": {
+                    "description": "The non-Hakem player deals. Alternates each round.",
+                    "first_dealer": "The player who is NOT the Hakem."
+                }
+            },
+            "setup": {
+                "steps": [
+                    "1. Both players cut the deck; higher card becomes first Hakem. Ties re-cut.",
+                    "2. The non-Hakem (dealer) shuffles the deck.",
+                    "3. Hakem cuts the deck.",
+                    "4. Dealer deals 5 cards to each player (can be dealt in batches of 2-3 for secrecy).",
+                    "5. Hakem looks at their 5 cards and announces the trump suit (Hokm).",
+                    "6. Dealer deals remaining 8 cards to each player → each player now holds 13 cards.",
+                    "7. No draw pile is used; all 26 cards are in players' hands."
+                ],
+                "hand_size": 13,
+                "initial_deal_before_trump": 5,
+                "remaining_deal_after_trump": 8
+            },
+            "trump_selection": {
+                "who_selects": "Hakem",
+                "when": "After seeing initial 5 cards",
+                "options": [
+                    "♠ Spades",
+                    "♥ Hearts",
+                    "♦ Diamonds",
+                    "♣ Clubs"
+                ],
+                "announcement": "Hakem verbally states the trump suit",
+                "strategy_note": "Hakem may bluff or choose based on strong holdings. No bidding/auction phase.",
+                "can_pass": false
+            },
+            "gameplay": {
+                "trick_structure": {
+                    "tricks_per_round": 13,
+                    "cards_per_trick": 2,
+                    "who_leads_first_trick": "Hakem",
+                    "who_leads_subsequent_tricks": "Winner of previous trick"
+                },
+                "following_suit_rule": {
+                    "must_follow_suit": true,
+                    "if_cannot_follow": "May play any card, including trump",
+                    "if_has_suit": "MUST play a card of the led suit — cannot play trump or another suit"
+                },
+                "trick_winning": {
+                    "rule": "Highest card of led suit wins, UNLESS trump card(s) played — then highest trump wins.",
+                    "trump_beats_all_non_trump": true,
+                    "multiple_trumps": "Highest trump wins"
+                },
+                "draw_phase": {
+                    "exists": false,
+                    "note": "All cards dealt upfront; no draw pile in standard 2-player Hokm."
+                }
+            },
+            "scoring": {
+                "unit": "Tricks (دست / Dast)",
+                "target_tricks_to_win_round": 7,
+                "tricks_in_round": 13,
+                "round_winner": "First player to accumulate 7 tricks wins the round",
+                "match_structure": "First to win 7 rounds wins the match (or agreed number, e.g., best of 5 or 7)",
+                "points_per_round_win": 1,
+                "early_termination": "Round ends the moment one player reaches 7 tricks — remaining tricks not played"
+            },
+            "special_outcomes": {
+                "baagh": {
+                    "fa": "باغ",
+                    "en": "Baagh / Garden / Shutout",
+                    "description": "One player wins ALL 13 tricks in a round.",
+                    "condition": "Opponent wins 0 tricks",
+                    "reward": "2 points instead of 1 for that round (house rule — can be 3)",
+                    "shame_factor": "High — considered extremely dominant performance"
+                },
+                "koozeh": {
+                    "fa": "کوزه",
+                    "en": "Koozeh / Jug / Goose-egg",
+                    "description": "A player wins zero tricks in an entire round.",
+                    "condition": "Player wins 0 tricks out of 13",
+                    "penalty": "Opponent receives 2 points (house rule — can be 3)",
+                    "note": "Even winning 1 trick avoids Koozeh"
+                },
+                "hokm_khordan": {
+                    "fa": "حکم خوردن",
+                    "en": "Hokm Khordan / Trump Eaten",
+                    "description": "The Hakem loses the round (opponent reaches 7 tricks first).",
+                    "consequence": "Hakem loses their status; opponent becomes next Hakem",
+                    "penalty_points": "Opponent scores 1 point normally; 2 if Hakem won 0 tricks (Koozeh)"
+                }
+            },
+            "misdeal_rules": {
+                "triggers": [
+                    "Wrong number of cards dealt to any player",
+                    "Cards exposed during deal",
+                    "Deck found to be incomplete (not 52 cards)"
+                ],
+                "action": "Redeal immediately; same Hakem retains role",
+                "four_aces_rule": "If a player holds all 4 Aces after the deal, they may declare it and request a redeal (optional house rule)"
+            },
+            "penalties_and_infractions": {
+                "revoke_renege": {
+                    "description": "Playing off-suit when holding a card of the led suit",
+                    "detection": "Can be claimed any time before the next trick is played",
+                    "penalty": "Trick is awarded to opponent; or entire round forfeited (house rule)"
+                },
+                "cheating": {
+                    "prohibited": [
+                        "Showing cards intentionally",
+                        "Coded signals",
+                        "Peeking at opponent's cards"
+                    ],
+                    "penalty": "Round or match forfeited (by agreement)"
+                }
+            },
+            "ui_states": [
+                "WAITING_FOR_PLAYERS",
+                "DEALING_INITIAL_5",
+                "HAKEM_SELECTING_TRUMP",
+                "DEALING_REMAINING_8",
+                "TRICK_IN_PROGRESS",
+                "TRICK_COMPLETE",
+                "ROUND_COMPLETE",
+                "MATCH_COMPLETE"
+            ],
+            "ai_hints": {
+                "hakem_strategy": "Pick trump suit where you hold the most cards or strongest cards (A, K, Q)",
+                "leading_strategy": "Lead high trumps to draw out opponent's trumps early",
+                "following_strategy": "If winning is not possible, discard lowest value non-trump card",
+                "endgame": "Count played cards to know remaining distribution"
+            }
+        },
+        "hokm_4player": {
+            "name": {
+                "fa": "حکم چهار نفره",
+                "en": "Hokm 4-Player (Classic)"
+            },
+            "description": "The classic and most popular version of Hokm. 4 players in 2 fixed teams. The Hakem (trump caller) is from the winning team and rotates. First team to 7 tricks wins each round. First team to agreed score wins the match.",
+            "players": 4,
+            "teams": {
+                "count": 2,
+                "size_each": 2,
+                "seating": "Partners sit OPPOSITE each other (North-South vs East-West)",
+                "team_assignment": "Fixed throughout the match; agreed before game starts"
+            },
+            "deck_size": 52,
+            "roles": {
+                "hakem": {
+                    "fa": "حاکم",
+                    "en": "Hakem / Ruler",
+                    "description": "One player on the winning team. Chooses the trump suit after seeing their first 5 cards. Leads the first trick.",
+                    "who_is_hakem_first_round": "Determined by highest cut card from all 4 players.",
+                    "hakem_retention": "If Hakem's team wins the round, same player remains Hakem next round.",
+                    "hakem_transfer": "If opponent team wins the round, a player from that team becomes next Hakem. Usually the player to the right of the previous Hakem.",
+                    "hakem_sits": "Any seat; partner sits opposite"
+                },
+                "dealer": {
+                    "description": "Player who physically deals the cards. NOT the same as Hakem.",
+                    "who_deals": "Typically the player to the right of the Hakem deals.",
+                    "dealing_direction": "Clockwise"
+                }
+            },
+            "setup": {
+                "steps": [
+                    "1. All 4 players each cut the deck; highest card becomes first Hakem.",
+                    "2. Player to Hakem's right shuffles.",
+                    "3. Player to Hakem's left (or as agreed) cuts.",
+                    "4. Dealer deals 5 cards to each player clockwise, starting from Hakem.",
+                    "5. Hakem examines their 5 cards and announces the trump suit (Hokm).",
+                    "6. Remaining 32 cards are dealt out (8 more to each player).",
+                    "7. Each player now holds exactly 13 cards."
+                ],
+                "hand_size": 13,
+                "initial_deal_before_trump": 5,
+                "remaining_deal_after_trump": 8
+            },
+            "trump_selection": {
+                "who_selects": "Hakem only",
+                "when": "After seeing first 5 cards, before remaining cards are dealt",
+                "options": [
+                    "♠ Spades (Pik)",
+                    "♥ Hearts (Del)",
+                    "♦ Diamonds (Khesht)",
+                    "♣ Clubs (Geshniz)"
+                ],
+                "announcement": "Hakem verbally declares the suit",
+                "can_pass": false,
+                "partner_influence": "Partner cannot suggest or signal trump — illegal",
+                "bluffing": "Hakem may declare a suit not in their hand to deceive opponents (rare but legal)"
+            },
+            "gameplay": {
+                "turn_order": "Clockwise",
+                "trick_structure": {
+                    "tricks_per_round": 13,
+                    "cards_per_trick": 4,
+                    "who_leads_first_trick": "Hakem",
+                    "who_leads_subsequent_tricks": "Winner of the previous trick"
+                },
+                "following_suit_rule": {
+                    "must_follow_suit": true,
+                    "if_cannot_follow": "May play any card including trump or any other suit",
+                    "if_has_suit": "MUST follow suit — cannot trump or discard to another suit",
+                    "enforcement": "If violation detected before next trick is led, trick is awarded to opponents"
+                },
+                "trick_winning": {
+                    "rule": "Highest card of led suit wins. If any trump played, highest trump wins.",
+                    "trump_hierarchy": "Any trump beats any non-trump card regardless of rank",
+                    "multiple_trumps_in_same_trick": "Highest trump card wins",
+                    "team_trick": "Trick is collected by ONE player on the winning team; both team members' tricks are pooled"
+                }
+            },
+            "scoring": {
+                "unit": "Tricks (دست / Dast)",
+                "target_tricks_to_win_round": 7,
+                "tricks_in_round": 13,
+                "round_winner": "First team to reach 7 tricks wins the round",
+                "early_termination": "Round ends the moment a team reaches 7 tricks",
+                "match_structure": "First team to reach agreed score (common: 7 points) wins the match",
+                "points_per_normal_round_win": 1
+            },
+            "special_outcomes": {
+                "baagh": {
+                    "fa": "باغ کردن",
+                    "en": "Baagh / Garden / Shutout",
+                    "description": "One team wins ALL 13 tricks in a round, giving opponent 0.",
+                    "condition": "Opponent team collects 0 tricks",
+                    "reward": "2 points for the winning team (house rule)",
+                    "note": "Extremely rare and considered a major victory"
+                },
+                "koozeh": {
+                    "fa": "کوزه شدن",
+                    "en": "Koozeh / Jug",
+                    "description": "A team, especially the Hakem's team, fails to win any tricks.",
+                    "condition": "Team wins exactly 0 tricks out of 13",
+                    "penalty": "Opponents score 2 or 3 points (by agreement)",
+                    "special_shame": "Hakem's team getting Koozeh is particularly shameful"
+                },
+                "hokm_khordan": {
+                    "fa": "حکم خوردن",
+                    "en": "Hokm Khordan / Trump Beaten",
+                    "description": "Hakem's team loses the round (opponent reaches 7 tricks first).",
+                    "consequence": "Hakem status passes to opponent team",
+                    "penalty_points": 1,
+                    "extra_penalty_if_koozeh": 2
+                },
+                "hakem_retention": {
+                    "fa": "حاکم ماندن",
+                    "en": "Hakem Retention",
+                    "description": "If Hakem's team wins, the same player remains Hakem for the next round.",
+                    "chain_wins": "A team can hold Hakem status for many consecutive rounds if they keep winning"
+                }
+            },
+            "team_communication": {
+                "legal": [
+                    "Playing cards in certain order as legal gameplay",
+                    "General banter (no card info)"
+                ],
+                "illegal_signals": [
+                    "Verbal hints about cards held",
+                    "Coded gestures (adjusting glasses, coughing, tapping table)",
+                    "Eye contact to indicate suit preference",
+                    "Slowing down to signal weakness",
+                    "Any pre-arranged non-verbal communication about hand strength"
+                ],
+                "penalty_for_signals": "Round forfeited or point deduction (by house rules)",
+                "note": "In casual Iranian play, mild signals are common but frowned upon in serious games"
+            },
+            "misdeal_rules": {
+                "triggers": [
+                    "Player receives wrong number of cards",
+                    "Card(s) exposed face-up during deal",
+                    "Player holds 4 Aces (optional house rule — may request redeal)",
+                    "Incomplete deck discovered"
+                ],
+                "action": "Full redeal; same Hakem retains their role",
+                "responsibility": "Dealer is responsible for correct dealing"
+            },
+            "penalties_and_infractions": {
+                "revoke": {
+                    "description": "Failing to follow suit when holding a card of the led suit",
+                    "claim_window": "Before next trick is played",
+                    "penalty_options": [
+                        "That trick awarded to opponents",
+                        "All remaining tricks awarded to opponents",
+                        "Round forfeited (severe/tournament rule)"
+                    ]
+                },
+                "exposure": {
+                    "description": "Accidentally or intentionally showing a card",
+                    "penalty": "Card must be played face-up at next opportunity (mild) or trick forfeited"
+                },
+                "cheating_signals": {
+                    "description": "Using pre-arranged signals with partner",
+                    "penalty": "Round or match forfeited"
+                },
+                "talking_during_play": {
+                    "description": "Discussing hand contents during active play",
+                    "penalty": "Warning or trick forfeited"
+                }
+            },
+            "ui_states": [
+                "WAITING_FOR_PLAYERS",
+                "TEAM_ASSIGNMENT",
+                "SEATING_ARRANGEMENT",
+                "DEALING_INITIAL_5",
+                "HAKEM_SELECTING_TRUMP",
+                "TRUMP_ANNOUNCED",
+                "DEALING_REMAINING_8",
+                "TRICK_IN_PROGRESS",
+                "AWAITING_PLAYER_TURN",
+                "TRICK_COMPLETE",
+                "TRICK_COLLECTED",
+                "ROUND_COMPLETE",
+                "SCORE_UPDATED",
+                "HAKEM_TRANSFERRED",
+                "MATCH_COMPLETE"
+            ],
+            "ai_hints": {
+                "hakem_trump_selection": "Choose suit with most cards or highest cards (A, K, Q); 5+ cards in a suit is strong",
+                "leading_as_hakem": "Lead a high trump to pull out opponents' trumps",
+                "partner_support": "If partner is winning the trick, play lowest card to conserve high cards",
+                "trump_conservation": "Avoid trumping early unless necessary; save trumps for critical tricks",
+                "counting_cards": "Track played cards especially trumps to estimate remaining distribution",
+                "endgame_7th_trick": "When either team is at 6 tricks, every card choice is critical"
+            }
+        },
+        "chaar_barg_yazdah": {
+            "name": {
+                "fa": "چهاربرگ / یازده / یازده تایی",
+                "en": "Chaar Barg / Yazdah / Eleven",
+                "aliases": [
+                    "یازده",
+                    "سور",
+                    "جمع",
+                    "قهوه",
+                    "Coffee",
+                    "Soor",
+                    "Eleven",
+                    "11"
+                ]
+            },
+            "description": "A capture card game where players collect cards from a central table by matching numbers that sum to 11 (or exact face-card matches). Special roles for Jack (Sarbaaz) and no trump system. Scoring is based on specific valuable cards and 'Sur' (clearing the table).",
+            "players": "2 or 4",
+            "teams": {
+                "2_player": "Each player plays individually",
+                "4_player": "2 teams of 2; partners sit opposite; captured cards are pooled per team"
+            },
+            "deck_size": 52,
+            "no_trump": true,
+            "card_values": {
+                "description": "Numeric values used for capture calculations",
+                "A": 1,
+                "2": 2,
+                "3": 3,
+                "4": 4,
+                "5": 5,
+                "6": 6,
+                "7": 7,
+                "8": 8,
+                "9": 9,
+                "10": 10,
+                "J": "Special — Jack (Sarbaaz / سرباز)",
+                "Q": "Face card — only captured by matching Q",
+                "K": "Face card — only captured by matching K",
+                "note": "Face cards (J, Q, K) do NOT participate in numeric summation captures"
+            },
+            "setup": {
+                "steps": [
+                    "1. Shuffle the 52-card deck.",
+                    "2. Deal 4 cards face-down to each player.",
+                    "3. Deal 4 cards face-up to the center table (زمین / Zamin).",
+                    "4. Check center cards: if any J, Q, or K appear in the center, reshuffle and redeal (house rule variant).",
+                    "5. Remaining cards form the draw pile.",
+                    "6. After each player uses all 4 hand cards, deal 4 more to each player (no new center cards after initial deal).",
+                    "7. Continue until all 52 cards are used."
+                ],
+                "hand_size": 4,
+                "center_cards_initial": 4,
+                "center_reseed": false,
+                "center_face_card_rule": "If a face card (J/Q/K) appears in center at setup, some variants require a redeal; others allow it and the face card stays until matched"
+            },
+            "core_capture_mechanics": {
+                "on_your_turn": "Play exactly ONE card from your hand face-up",
+                "capture_options": {
+                    "single_match": {
+                        "description": "Your card's value equals exactly one center card's value",
+                        "example": "Play a 7, capture the 7 on the table",
+                        "both_captured": true
+                    },
+                    "multi_match_sum": {
+                        "description": "Your card's value equals the SUM of two or more center cards",
+                        "example": "Play an 8, capture 5+3 from the table",
+                        "all_matching_sets": "You may capture ANY combination of center cards that sum to your card — but only ONE combination per play (if multiple combinations possible, player chooses)",
+                        "greedy_rule": "Some variants require capturing the largest possible group"
+                    },
+                    "no_capture": {
+                        "description": "If no capture is possible (or player chooses not to capture), place your card face-up on the center table",
+                        "card_remains": "The played card stays on the table for future players to capture"
+                    },
+                    "face_card_capture": {
+                        "Q": "Queen can ONLY capture another Queen on the table. Cannot be used in sum captures.",
+                        "K": "King can ONLY capture another King on the table. Cannot be used in sum captures.",
+                        "face_card_no_sum": "Q and K do NOT participate in any arithmetic capture"
+                    }
+                }
+            },
+            "special_card_jack": {
+                "fa": "سرباز / جک",
+                "en": "Jack (Sarbaaz)",
+                "special_power": "Captures ALL non-face cards currently on the center table in a single move",
+                "captures": "All numeric cards (A,2,3,4,5,6,7,8,9,10) on the table at time of play",
+                "does_not_capture": [
+                    "Other Jacks on the table",
+                    "Queens on the table",
+                    "Kings on the table"
+                ],
+                "jack_captures_jack": false,
+                "if_only_jacks_on_table": "Jack played captures nothing; played Jack goes to the table",
+                "if_only_face_cards_on_table": "Jack played captures nothing; Jack goes to table",
+                "sur_exception": "Playing a Jack that clears the table does NOT count as a Sur (see Sur rules)",
+                "jack_on_empty_table": "Jack is simply placed on the table; no capture",
+                "jack_itself_after_capture": "The played Jack is included in the captured pile"
+            },
+            "sur_mechanic": {
+                "fa": "سور",
+                "en": "Sur / Table Clear",
+                "description": "When a player captures ALL cards from the center table, leaving it completely empty, they score a Sur bonus.",
+                "condition": "After a legal numeric capture, the table is completely empty",
+                "sur_NOT_valid_when": [
+                    "A Jack is used to clear the table (Jack clears are excluded)",
+                    "Table was already empty before the play",
+                    "Only face cards remained and they were matched"
+                ],
+                "sur_valid_when": [
+                    "Numeric card (A,2..10) captures all remaining center cards through single or sum match",
+                    "Q captures last Q leaving table empty (some variants count this as Sur)",
+                    "K captures last K leaving table empty (some variants count this as Sur)"
+                ],
+                "sur_points": "5 points per Sur (common; variants: 2, 3, or 10 — must be agreed before game)",
+                "consecutive_sur": "Each Sur is scored independently; multiple Surs in one game all count",
+                "sur_marker": "It is common to leave the last captured card face-up in the pile to mark a Sur"
+            },
+            "end_of_hand_rule": {
+                "description": "When the draw pile is exhausted and all hand cards are played",
+                "remaining_center_cards": "The player (or team) who made the LAST capture of any card from the center takes ALL remaining center cards",
+                "no_sur_for_last_capture": "This final sweep does NOT count as a Sur even if table is cleared"
+            },
+            "scoring_system": {
+                "unit": "Points (امتیاز)",
+                "scorable_items": {
+                    "each_ace": {
+                        "fa": "هر آس",
+                        "en": "Each Ace (any suit)",
+                        "points": 1,
+                        "count_in_deck": 4,
+                        "max_possible": 4
+                    },
+                    "ten_of_clubs": {
+                        "fa": "ده گشنیز / ده پیک مشکی",
+                        "en": "Ten of Clubs (10♣)",
+                        "points": 2,
+                        "count_in_deck": 1,
+                        "note": "Most valuable single card in the game"
+                    },
+                    "two_of_clubs": {
+                        "fa": "دو گشنیز",
+                        "en": "Two of Clubs (2♣)",
+                        "points": 1,
+                        "count_in_deck": 1
+                    },
+                    "each_queen": {
+                        "fa": "هر بی‌بی",
+                        "en": "Each Queen",
+                        "points": 1,
+                        "count_in_deck": 4,
+                        "max_possible": 4
+                    },
+                    "majority_cards": {
+                        "fa": "اکثریت کارت‌ها",
+                        "en": "Card Majority",
+                        "description": "Player/team who captures MORE than half of all 52 cards (i.e., 27+)",
+                        "points": 3,
+                        "tie_rule": "If both sides capture exactly 26, NO majority bonus is awarded to either side"
+                    },
+                    "sur": {
+                        "fa": "سور",
+                        "en": "Sur / Table Clear",
+                        "points": 5,
+                        "note": "Each Sur scored separately; value agreed before game"
+                    }
+                },
+                "total_base_points_available": "4 (Aces) + 2 (10♣) + 1 (2♣) + 4 (Queens) + 3 (majority) = 14 base points + Sur bonuses",
+                "scoring_moment": "After all cards are played and last-capture rule applied",
+                "winning_condition": "Reach agreed target score (common: 62 or 101 points across multiple rounds); highest score after agreed rounds"
+            },
+            "face_card_special_rules": {
+                "queen_vs_queen": "Q can only be captured by another Q. If Q is on table and player has Q in hand, they MUST or may capture it.",
+                "king_vs_king": "K can only be captured by another K.",
+                "face_card_on_table_without_match": "If Q or K is on table and you have no matching face card, you cannot capture it — just place your card.",
+                "face_cards_cannot_be_summed": "You cannot use Q or K as part of a numeric sum to capture other cards.",
+                "face_cards_in_sum": "A numeric card cannot capture face cards even if their 'rank' (J=11, Q=12, K=13) would otherwise complete a sum — face card capture is ONLY by identical match"
+            },
+            "deal_replenishment": {
+                "when": "When ALL players have exhausted their 4-card hands",
+                "action": "Deal 4 new cards to each player from the draw pile",
+                "center_not_replenished": "Do NOT add new cards to the center after initial setup",
+                "continue_until": "Draw pile is empty AND all players have no cards left"
+            },
+            "misdeal_rules": {
+                "triggers": [
+                    "Wrong number of cards in any hand",
+                    "Wrong number of cards in center",
+                    "Face card in center at start (house rule variant)",
+                    "Incomplete deck"
+                ],
+                "action": "Gather all cards, reshuffle, redeal",
+                "mid_game_discovery": "If deck found incomplete mid-game, round is void — no points awarded"
+            },
+            "four_player_team_rules": {
+                "card_pooling": "Both team members' captured cards go into ONE shared pile",
+                "scoring": "Team's shared pile is scored together",
+                "communication": "Partners may NOT show each other their hands or signal",
+                "turn_order": "Alternating: Team A player, Team B player, Team A player, Team B player (clockwise)"
+            },
+            "edge_cases": {
+                "empty_table_non_capture": {
+                    "scenario": "Table is empty and player cannot capture",
+                    "action": "Player places one card on the table; no points scored"
+                },
+                "multiple_capture_options": {
+                    "scenario": "Your card can form multiple valid sums with different center cards",
+                    "rule": "Player CHOOSES which combination to capture",
+                    "greedy_variant": "Some variants require capturing the maximum number of cards possible"
+                },
+                "jack_on_empty_table": {
+                    "scenario": "Player plays a Jack when table is empty",
+                    "action": "Jack is placed face-up on the table",
+                    "no_capture": true,
+                    "no_sur": true
+                },
+                "only_jacks_on_table": {
+                    "scenario": "Table has one or more Jacks but no numeric cards",
+                    "if_player_plays_jack": "Played Jack does NOT capture other Jacks; all stay on table",
+                    "if_player_plays_number": "Number is placed on table (cannot sum with Jacks)"
+                },
+                "only_face_cards_on_table": {
+                    "scenario": "Table only has Q and/or K and/or J",
+                    "rule": "Only matching face card captures; Jack captures nothing from face-only table"
+                },
+                "last_card_played_captures": {
+                    "scenario": "Last card played from last hand wins a capture",
+                    "special_rule": "All remaining center cards go to that player regardless of their values"
+                },
+                "tie_in_majority": {
+                    "scenario": "Both sides captured exactly 26 cards",
+                    "rule": "No majority bonus awarded; 3 points go unclaimed"
+                },
+                "sur_on_last_turn": {
+                    "scenario": "Last capture of the game also clears the table",
+                    "rule": "Sur is awarded IF it was not achieved by Jack; last-capture rule and Sur can both apply simultaneously"
+                }
+            },
+            "ui_states": [
+                "WAITING_FOR_PLAYERS",
+                "DEALING_INITIAL_HANDS",
+                "DEALING_CENTER_4",
+                "PLAYER_TURN",
+                "SELECTING_CAPTURE_COMBINATION",
+                "CAPTURE_ANIMATION",
+                "SUR_CELEBRATION",
+                "PLACE_CARD_ON_TABLE",
+                "REDEAL_HANDS",
+                "LAST_CAPTURE_SWEEP",
+                "ROUND_SCORING",
+                "ROUND_COMPLETE",
+                "MATCH_COMPLETE"
+            ],
+            "ai_hints": {
+                "capture_priority": "Prefer captures that take the 10♣ or Aces; these are highest value",
+                "sur_strategy": "If you can engineer a Sur, do so — 5 points is massive",
+                "jack_usage": "Use Jack when table has many numeric cards to maximize captures; avoid wasting on sparse tables",
+                "card_counting": "Track which Aces, 2♣, 10♣, and Queens have been captured",
+                "majority_tracking": "Count total cards captured per side; if losing majority by round end, prioritize quantity captures",
+                "face_card_blocking": "If opponent has a Q/K, try not to put matching Q/K on table (gives them free capture)"
+            },
+            "variants_and_house_rules": {
+                "sur_value_variants": [
+                    "2 points",
+                    "3 points",
+                    "5 points (most common)",
+                    "10 points"
+                ],
+                "target_score_variants": [
+                    "62 points",
+                    "101 points",
+                    "by agreed rounds"
+                ],
+                "face_card_in_center_at_start": "Some groups redeal; others leave face cards in center",
+                "jack_sur_variant": "Some groups allow Jack to score Sur if it clears the table",
+                "queen_point_variant": "Some groups do not award points for Queens at all",
+                "majority_points_variant": "Some groups award 1 point instead of 3 for majority"
+            }
+        }
+    },
+    "shared_deck_reference": {
+        "total_cards": 52,
+        "suits": {
+            "spades": {
+                "fa": "پیک",
+                "symbol": "♠",
+                "color": "black"
+            },
+            "hearts": {
+                "fa": "دل",
+                "symbol": "♥",
+                "color": "red"
+            },
+            "diamonds": {
+                "fa": "خشت",
+                "symbol": "♦",
+                "color": "red"
+            },
+            "clubs": {
+                "fa": "گشنیز / قرمز",
+                "symbol": "♣",
+                "color": "black"
+            }
+        },
+        "ranks_in_order": {
+            "hokm_rank_high_to_low": [
+                "A",
+                "K",
+                "Q",
+                "J",
+                "10",
+                "9",
+                "8",
+                "7",
+                "6",
+                "5",
+                "4",
+                "3",
+                "2"
+            ],
+            "chaar_barg_numeric_value": {
+                "A": 1,
+                "2": 2,
+                "3": 3,
+                "4": 4,
+                "5": 5,
+                "6": 6,
+                "7": 7,
+                "8": 8,
+                "9": 9,
+                "10": 10,
+                "J": "special",
+                "Q": "face_only",
+                "K": "face_only"
+            }
+        },
+        "notable_cards": {
+            "10_of_clubs": "Highest scoring card in Chaar Barg (2 pts)",
+            "2_of_clubs": "Bonus scoring card in Chaar Barg (1 pt)",
+            "aces": "Score 1 pt each in Chaar Barg; highest rank in Hokm",
+            "queens": "Score 1 pt each in Chaar Barg; high rank in Hokm",
+            "jack": "Special sweep card in Chaar Barg; high rank in Hokm"
+        }
+    },
+    "glossary": {
+        "fa_to_en": {
+            "حکم": "Trump suit",
+            "حاکم": "Hakem — the trump-caller/ruler",
+            "دست": "Trick (one complete round of cards played by all players)",
+            "باغ": "Baagh — shutout/sweep (winning all tricks)",
+            "کوزه": "Koozeh — zero tricks (goose egg)",
+            "سور": "Sur — clearing the center table completely",
+            "زمین": "Zamin — the center table in Chaar Barg",
+            "سرباز": "Sarbaaz — Jack card",
+            "بی‌بی": "Bibi — Queen card",
+            "شاه": "Shah — King card",
+            "آس": "Aas — Ace card",
+            "گشنیز": "Geshniz — Clubs suit",
+            "حکم خوردن": "Hokm Khordan — Hakem's team losing the round",
+            "باغ کردن": "Baagh Kardan — winning all tricks",
+            "رنگ": "Rang — suit/color",
+            "برگ": "Barg — card",
+            "دور": "Dor — round",
+            "ست": "Set — match or series of rounds"
+        }
+    },
+    "implementation_checklist": {
+        "hokm_2player": [
+            "✅ Cut for Hakem determination",
+            "✅ Deal 5 → Trump selection → Deal 8",
+            "✅ Trick-taking with suit-following enforcement",
+            "✅ Hakem leads first trick",
+            "✅ 7-trick threshold for round win",
+            "✅ Baagh (all 13 tricks) = 2 points",
+            "✅ Koozeh (0 tricks) penalty",
+            "✅ Revoke/renege detection",
+            "✅ Misdeal handling",
+            "✅ Match score tracking"
+        ],
+        "hokm_4player": [
+            "✅ 4-player team assignment (opposite seating)",
+            "✅ Cut for Hakem determination",
+            "✅ Deal 5 → Trump selection → Deal 8",
+            "✅ Clockwise trick-taking",
+            "✅ Suit-following enforcement per player",
+            "✅ Team trick pooling",
+            "✅ 7-trick threshold for round win",
+            "✅ Hakem retention/transfer logic",
+            "✅ Baagh = 2 points",
+            "✅ Koozeh = 2-3 points penalty",
+            "✅ Hokm Khordan = point transfer",
+            "✅ Signal/cheating detection (optional)",
+            "✅ Misdeal handling",
+            "✅ Match score tracking"
+        ],
+        "chaar_barg_yazdah": [
+            "✅ Initial deal: 4 to each player + 4 center",
+            "✅ Numeric sum capture engine",
+            "✅ Single exact match capture",
+            "✅ Multi-card sum capture with player choice",
+            "✅ Jack sweep logic (excludes face cards)",
+            "✅ Q/K face-card-only matching",
+            "✅ Sur detection (non-Jack clear only)",
+            "✅ Sur exclusions (Jack clear, last-play sweep)",
+            "✅ Hand replenishment (4 more when hand empty)",
+            "✅ Last-capture sweep for remaining center cards",
+            "✅ Scoring: Aces, 10♣, 2♣, Queens, Majority, Sur",
+            "✅ Majority tie → no bonus",
+            "✅ Misdeal handling",
+            "✅ 4-player team pooling",
+            "✅ Multiple capture option selection UI",
+            "✅ Edge: Jack on empty table",
+            "✅ Edge: Only face cards on table"
+        ]
+    }
+}

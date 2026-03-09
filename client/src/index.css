@@ -1,0 +1,363 @@
+@import "tailwindcss";
+
+:root {
+    --sc-bg: #0e1621;
+    --sc-surface-1: #17212b;
+    --sc-surface-2: #1e2c3a;
+    --sc-surface-3: #242f3d;
+    --sc-border: #0e1621;
+    --sc-border-soft: rgba(78, 164, 246, 0.18);
+    --sc-text: #ffffff;
+    --sc-muted: #93a4b7;
+    --sc-accent: #4ea4f6;
+    --sc-accent-soft: rgba(78, 164, 246, 0.18);
+    --sc-accent-strong: rgba(78, 164, 246, 0.32);
+    --sc-message-in: #182533;
+    --sc-message-out: #2b5278;
+    --sc-app-backdrop: linear-gradient(180deg, #0e1621 0%, #0b131c 100%);
+    --sc-chat-wallpaper: radial-gradient(circle at 20% 40%, rgba(78,164,246,0.18), transparent 38%), radial-gradient(circle at 80% 35%, rgba(30,44,58,0.42), transparent 32%), linear-gradient(135deg, #0f1925 0%, #132131 100%);
+    --sc-chat-effect: none;
+    --sc-chat-dim: 0.18;
+    --sc-chat-dim-strong: 0.3;
+    --sc-chat-blur: 0px;
+    --sc-chat-blur-scale: 1;
+    --sc-effect-strength: 1;
+}
+
+/* ─── Custom scrollbar ─── */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #2b5278;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3a6491;
+}
+
+/* ─── Base styles ─── */
+html, body, #root {
+    margin: 0;
+    padding: 0;
+    height: 100dvh;
+    height: 100vh; /* fallback */
+    width: 100%;
+    overflow: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+        Ubuntu, Cantarell, sans-serif;
+    background: var(--sc-app-backdrop);
+    color: var(--sc-text);
+    /* Prevent pull-to-refresh and bounce on mobile */
+    overscroll-behavior: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* Use dvh for the app shell so it resizes with virtual keyboard */
+.h-dvh {
+    height: 100vh; /* fallback */
+    height: 100dvh;
+}
+
+/* ─── Animations ─── */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+.animate-in {
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes sc-wallpaper-float {
+    from {
+        transform: scale(var(--sc-chat-blur-scale, 1)) translate3d(0, 0, 0);
+    }
+    to {
+        transform: scale(calc(var(--sc-chat-blur-scale, 1) + 0.035)) translate3d(0, -1.5%, 0);
+    }
+}
+
+/* ─── Selection color ─── */
+::selection {
+    background: var(--sc-accent);
+    color: white;
+}
+
+/* ─── Prevent text selection on message bubbles for mobile long-press ─── */
+.msg-bubble-touch {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* ─── Appearance system ─── */
+.sc-app-shell {
+    background: var(--sc-app-backdrop);
+    color: var(--sc-text);
+}
+
+.sc-app-shell [class*='bg-[#0e1621]'] {
+    background-color: var(--sc-bg) !important;
+}
+
+.sc-app-shell [class*='bg-[#17212b]'] {
+    background-color: var(--sc-surface-1) !important;
+}
+
+.sc-app-shell [class*='bg-[#1e2c3a]'] {
+    background-color: var(--sc-surface-2) !important;
+}
+
+.sc-app-shell [class*='bg-[#242f3d]'] {
+    background-color: var(--sc-surface-3) !important;
+}
+
+.sc-app-shell [class*='bg-[#182533]'] {
+    background-color: var(--sc-message-in) !important;
+}
+
+.sc-app-shell [class*='bg-[#2b5278]'] {
+    background-color: var(--sc-message-out) !important;
+}
+
+.sc-app-shell [class~='bg-[#4ea4f6]/15'] {
+    background-color: color-mix(in srgb, var(--sc-accent) 15%, transparent) !important;
+}
+
+.sc-app-shell [class~='bg-[#4ea4f6]/10'] {
+    background-color: color-mix(in srgb, var(--sc-accent) 10%, transparent) !important;
+}
+
+.sc-app-shell [class~='bg-[#4ea4f6]/20'] {
+    background-color: color-mix(in srgb, var(--sc-accent) 20%, transparent) !important;
+}
+
+.sc-app-shell [class~='bg-[#4ea4f6]/30'] {
+    background-color: color-mix(in srgb, var(--sc-accent) 30%, transparent) !important;
+}
+
+.sc-app-shell [class~='bg-[#4ea4f6]'] {
+    background-color: var(--sc-accent) !important;
+}
+
+.sc-app-shell [class~='text-[#4ea4f6]'] {
+    color: var(--sc-accent) !important;
+}
+
+.sc-app-shell [class*='border-[#0e1621]'] {
+    border-color: var(--sc-border) !important;
+}
+
+.sc-app-shell [class*='border-[#2b5278]'] {
+    border-color: var(--sc-border-soft) !important;
+}
+
+.sc-app-shell [class~='border-[#4ea4f6]'] {
+    border-color: var(--sc-accent) !important;
+}
+
+.sc-app-shell [class*='text-gray-400'] {
+    color: var(--sc-muted) !important;
+}
+
+.sc-app-shell [class*='text-gray-500'] {
+    color: color-mix(in srgb, var(--sc-muted) 78%, transparent) !important;
+}
+
+.sc-app-shell [class*='text-gray-600'] {
+    color: color-mix(in srgb, var(--sc-muted) 58%, transparent) !important;
+}
+
+.sc-app-shell [class*='hover:bg-[#1e2c3a]']:hover {
+    background-color: var(--sc-surface-2) !important;
+}
+
+.sc-app-shell [class*='hover:bg-[#2b5278]']:hover {
+    background-color: color-mix(in srgb, var(--sc-accent) 72%, black 28%) !important;
+}
+
+.sc-app-shell [class*='hover:bg-[#3d93e5]']:hover {
+    background-color: color-mix(in srgb, var(--sc-accent) 84%, white 8%) !important;
+}
+
+.sc-app-shell [class*='hover:text-[#4ea4f6]']:hover {
+    color: var(--sc-accent) !important;
+}
+
+.sc-app-shell [class*='focus:border-[#4ea4f6]']:focus,
+.sc-app-shell [class*='focus:ring-[#4ea4f6]']:focus {
+    border-color: var(--sc-accent) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sc-accent) 40%, transparent) !important;
+}
+
+.sc-panels-glass [class*='bg-[#17212b]'],
+.sc-panels-glass [class*='bg-[#1e2c3a]'],
+.sc-panels-glass [class*='bg-[#242f3d]'] {
+    backdrop-filter: blur(18px) saturate(125%);
+}
+
+.sc-panels-glass [class*='bg-[#17212b]'] {
+    background-color: color-mix(in srgb, var(--sc-surface-1) 76%, transparent) !important;
+}
+
+.sc-panels-glass [class*='bg-[#1e2c3a]'] {
+    background-color: color-mix(in srgb, var(--sc-surface-2) 78%, transparent) !important;
+}
+
+.sc-panels-glass [class*='bg-[#242f3d]'] {
+    background-color: color-mix(in srgb, var(--sc-surface-3) 82%, transparent) !important;
+}
+
+.sc-chat-wallpaper {
+    position: relative;
+    isolation: isolate;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    background: transparent !important;
+}
+
+.sc-chat-wallpaper::before,
+.sc-chat-wallpaper::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.sc-chat-wallpaper::before {
+    background-image: var(--sc-chat-wallpaper);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    filter: blur(var(--sc-chat-blur));
+    transform: scale(var(--sc-chat-blur-scale));
+    opacity: 1;
+}
+
+.sc-effects-on.sc-motion-on .sc-chat-wallpaper::before {
+    animation: sc-wallpaper-float 28s ease-in-out infinite alternate;
+}
+
+.sc-chat-wallpaper::after {
+    background-image:
+        linear-gradient(
+            180deg,
+            rgba(6, 10, 15, var(--sc-chat-dim)) 0%,
+            rgba(6, 10, 15, var(--sc-chat-dim-strong)) 100%
+        ),
+        var(--sc-chat-effect);
+    opacity: calc(0.82 + var(--sc-effect-strength) * 0.18);
+}
+
+.sc-chat-wallpaper > * {
+    position: relative;
+    z-index: 1;
+}
+
+.sc-message-bubble {
+    transition: border-radius 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sc-bubbles-soft .sc-message-bubble {
+    border-radius: 1.4rem !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.sc-bubbles-soft .sc-message-bubble[data-own='true'] {
+    border-bottom-right-radius: 0.7rem !important;
+}
+
+.sc-bubbles-soft .sc-message-bubble[data-own='false'] {
+    border-bottom-left-radius: 0.7rem !important;
+}
+
+.sc-bubbles-glass .sc-message-bubble {
+    backdrop-filter: blur(18px) saturate(135%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+.sc-bubbles-glass .sc-message-bubble[data-own='true'] {
+    background-color: color-mix(in srgb, var(--sc-message-out) 72%, transparent) !important;
+    border-color: color-mix(in srgb, var(--sc-accent) 28%, transparent);
+}
+
+.sc-bubbles-glass .sc-message-bubble[data-own='false'] {
+    background-color: color-mix(in srgb, var(--sc-message-in) 76%, transparent) !important;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.sc-density-compact .sc-chat-list-item {
+    padding-top: 0.7rem !important;
+    padding-bottom: 0.7rem !important;
+}
+
+.sc-density-compact .sc-message-row {
+    margin-bottom: 0.2rem !important;
+}
+
+.sc-density-compact .sc-message-bubble {
+    padding: 0.45rem 0.8rem !important;
+}
+
+.sc-density-compact .sc-chat-input-row {
+    gap: 0.4rem !important;
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+}
+
+.sc-density-compact .sc-settings-card {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+}
+
+.sc-theme-card,
+.sc-wallpaper-card,
+.sc-effect-card {
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sc-theme-card:hover,
+.sc-wallpaper-card:hover,
+.sc-effect-card:hover {
+    transform: translateY(-1px);
+}
+
+.sc-preview-surface {
+    background: var(--sc-app-backdrop);
+    color: var(--sc-text);
+}
