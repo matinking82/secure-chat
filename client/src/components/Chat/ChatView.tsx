@@ -11,6 +11,8 @@ import EncryptionKeyModal from "./EncryptionKeyModal";
 import ShareModal from "./ShareModal";
 import VoiceCallOverlay, { VoiceCallBanner } from "./VoiceCallOverlay";
 import VideoCallOverlay from "./VideoCallOverlay";
+import { getEncryptionKey } from "../../lib/storage";
+import { decryptText } from "../../lib/crypto";
 
 // Consistent color palette for chat avatars
 const CHAT_COLORS = [
@@ -330,11 +332,10 @@ export default function ChatView() {
                 {/* Voice call button */}
                 <button
                     onClick={voice.isInCall ? voice.leaveCall : voice.joinCall}
-                    className={`p-2 transition ${
-                        voice.isInCall
-                            ? "text-green-400 hover:text-green-300"
-                            : "text-gray-400 hover:text-white"
-                    }`}
+                    className={`p-2 transition ${voice.isInCall
+                        ? "text-green-400 hover:text-green-300"
+                        : "text-gray-400 hover:text-white"
+                        }`}
                     title={voice.isInCall ? "Leave Voice Chat" : "Join Voice Chat"}
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -385,19 +386,19 @@ export default function ChatView() {
             {/* Fullscreen video overlay (when anyone has video on) */}
             {voice.isInCall &&
                 (voice.isVideoOn || voice.participants.some((p) => p.videoEnabled)) && (
-                <VideoCallOverlay
-                    participants={voice.participants}
-                    callDuration={voice.callDuration}
-                    isMuted={voice.isMuted}
-                    isVideoOn={voice.isVideoOn}
-                    browserId={settings.browserId}
-                    localStream={voice.localStream}
-                    remoteStreams={voice.remoteStreams}
-                    onToggleMute={voice.toggleMute}
-                    onToggleVideo={voice.toggleVideo}
-                    onLeave={voice.leaveCall}
-                />
-            )}
+                    <VideoCallOverlay
+                        participants={voice.participants}
+                        callDuration={voice.callDuration}
+                        isMuted={voice.isMuted}
+                        isVideoOn={voice.isVideoOn}
+                        browserId={settings.browserId}
+                        localStream={voice.localStream}
+                        remoteStreams={voice.remoteStreams}
+                        onToggleMute={voice.toggleMute}
+                        onToggleVideo={voice.toggleVideo}
+                        onLeave={voice.leaveCall}
+                    />
+                )}
 
             {/* Voice call banner (others in call, you're not) */}
             {!voice.isInCall && voice.participants.length > 0 && (

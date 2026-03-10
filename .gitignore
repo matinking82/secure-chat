@@ -5,7 +5,6 @@ index.js
 files/
 .env
 client/node_modules
-game/*.ts.map
-game/*.js
-game/*.d.ts
-game/*.js.map
+games/*.d.*
+games/*.js*
+games/*.js.map

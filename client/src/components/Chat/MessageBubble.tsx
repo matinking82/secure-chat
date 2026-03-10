@@ -213,9 +213,11 @@ export default function MessageBubble({
     useEffect(() => {
         if (msg.text) {
             const key = getEncryptionKey(chatId);
-            decryptText(msg.text, key, chatId).then(setDecrypted);
+            decryptText(msg.text, key, chatId).then((result) => {
+                setDecrypted(result);
+            });
         }
-    }, [msg.text, chatId]);
+    }, [msg.text, msg.id, chatId]);
 
     // ─── Decrypt reply text ───
     useEffect(() => {
@@ -242,7 +244,9 @@ export default function MessageBubble({
                 // Re-decrypt text
                 if (msg.text) {
                     const key = getEncryptionKey(chatId);
-                    decryptText(msg.text, key, chatId).then(setDecrypted);
+                    decryptText(msg.text, key, chatId).then((result) => {
+                        setDecrypted(result);
+                    });
                 }
                 // Re-decrypt reply
                 if (replyTarget?.text) {
@@ -259,7 +263,7 @@ export default function MessageBubble({
         };
         window.addEventListener("encryption-key-changed", handler);
         return () => window.removeEventListener("encryption-key-changed", handler);
-    }, [chatId, msg.text, msg.file, replyTarget, doDecryptFile]);
+    }, [chatId, msg.text, msg.id, msg.file, replyTarget, doDecryptFile]);
 
     // Cleanup object URL and long-press timer on unmount
     useEffect(() => {
@@ -653,9 +657,7 @@ export default function MessageBubble({
                     ) : decrypted.text ? (
                         <div
                             dir="auto"
-                            className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${
-                                decrypted.failed ? "text-red-400 italic" : "text-white"
-                            }`}
+                            className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${decrypted.failed ? "text-red-400 italic" : "text-white"}`}
                             style={{ unicodeBidi: "plaintext" }}
                         >
                             {decrypted.failed ? renderTextWithEmoji(decrypted.text, 20) : renderTextWithLinks(decrypted.text, 20)}

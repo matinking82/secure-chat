@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { getBrowserId } from "../../lib/storage";
 import { useChat } from "../../contexts/ChatContext";
 import CardSvg, { useCardPreloader } from "./CardSvg";
@@ -156,6 +156,45 @@ export default function ChaarBargGame({ gameState, messageId, chatId }: ChaarBar
     const [selectedHandCard, setSelectedHandCard] = useState<number | null>(null);
     const [selectedTableCards, setSelectedTableCards] = useState<Set<number>>(new Set());
     useCardPreloader();
+
+    // ─── Capture display: show played card + captured cards until next player plays ───
+    const prevStateRef = useRef<{ center: Card[]; captures: [Card[], Card[]]; turn: number } | null>(null);
+    const [captureDisplay, setCaptureDisplay] = useState<{ playedCard: Card; capturedCards: Card[]; player: number } | null>(null);
+
+    useEffect(() => {
+        const prev = prevStateRef.current;
+        if (prev && gameState.phase === 1) {
+            // Check if turn changed (a move was made)
+            if (prev.turn !== gameState.turn) {
+                // The player who just moved is prev.turn
+                const prevPlayer = prev.turn;
+                const prevCaptureCount = prev.captures[prevPlayer - 1].length;
+                const newCaptureCount = gameState.captures[prevPlayer - 1].length;
+
+                if (newCaptureCount > prevCaptureCount) {
+                    // Capture happened — find which cards were captured
+                    const newlyCaptured = gameState.captures[prevPlayer - 1].slice(prevCaptureCount);
+                    const prevCenterStrs = new Set(prev.center.map(cardToStr));
+                    const playedCard = newlyCaptured.find(c => !prevCenterStrs.has(cardToStr(c)));
+                    const capturedFromCenter = newlyCaptured.filter(c => prevCenterStrs.has(cardToStr(c)));
+
+                    if (playedCard && capturedFromCenter.length > 0) {
+                        setCaptureDisplay({ playedCard, capturedCards: capturedFromCenter, player: prevPlayer });
+                    } else {
+                        setCaptureDisplay(null);
+                    }
+                } else {
+                    // No capture — clear any existing display
+                    setCaptureDisplay(null);
+                }
+            }
+        }
+        prevStateRef.current = {
+            center: [...gameState.center],
+            captures: [[...gameState.captures[0]], [...gameState.captures[1]]],
+            turn: gameState.turn,
+        };
+    }, [gameState.center, gameState.captures, gameState.turn, gameState.phase]);
 
     const myPlayerNum = (() => {
         if (myBrowserId === gameState.p1) return 1;
@@ -368,6 +407,38 @@ export default function ChaarBargGame({ gameState, messageId, chatId }: ChaarBar
                     >
                         🎮 Join Game
                     </button>
+                </div>
+            )}
+
+            {/* Capture display banner */}
+            {captureDisplay && gameState.phase === 1 && (
+                <div className="mb-3 px-3 py-2 rounded-xl" style={{ background: "rgba(250,204,21,0.08)", border: "1px solid rgba(250,204,21,0.2)" }}>
+                    <div className="text-[10px] text-yellow-400 text-center mb-1 font-semibold">
+                        P{captureDisplay.player} captured:
+                    </div>
+                    <div className="flex flex-wrap justify-center items-center gap-1">
+                        <CardSvg
+                            suit={captureDisplay.playedCard.suit}
+                            rank={captureDisplay.playedCard.rank}
+                            variant="chaarbarg"
+                            width={36}
+                            height={52}
+                            disabled
+                            highlight
+                        />
+                        <span className="text-yellow-400 text-sm font-bold mx-1">→</span>
+                        {captureDisplay.capturedCards.map((card, i) => (
+                            <CardSvg
+                                key={`cap-${cardToStr(card)}-${i}`}
+                                suit={card.suit}
+                                rank={card.rank}
+                                variant="chaarbarg"
+                                width={36}
+                                height={52}
+                                disabled
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { getBrowserId } from "../../lib/storage";
 import { useChat } from "../../contexts/ChatContext";
 import CardSvg, { useCardPreloader } from "./CardSvg";
@@ -99,6 +99,8 @@ export function parseHokm2(text: string): Hokm2State | null {
 
 // ─── Component ───
 
+const TRICK_DISPLAY_DURATION_MS = 1500;
+
 interface Hokm2GameProps {
     gameState: Hokm2State;
     messageId: number;
@@ -109,6 +111,44 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
     const myBrowserId = getBrowserId();
     const { socket } = useChat();
     useCardPreloader();
+
+    // ─── Trick completion delay: show completed trick for 2.5s ───
+    const prevTrickRef = useRef<{ trick: Card[]; trickPlayers: number[]; hands: [Card[], Card[]] }>({ trick: [], trickPlayers: [], hands: [[], []] });
+    const [completedTrick, setCompletedTrick] = useState<{ trick: Card[]; trickPlayers: number[] } | null>(null);
+
+    useEffect(() => {
+        const prevTrick = prevTrickRef.current;
+        // Detect trick completion: previous trick had 2 cards (full), current trick is empty or has fewer
+        if (prevTrick.trick.length === 1 && gameState.trick.length === 0) {
+            //add the last played card
+            for (let i = 0; i < prevTrick.hands.length; i++) {
+                const prevHand = prevTrick.hands[i];
+                const curentHand = gameState.hands[i];
+
+                for (let card of prevHand) {
+                    if (!curentHand.find(c => c.rank === card.rank && c.suit === card.suit)) {
+                        prevTrick.trick.push(card);
+                    }
+                }
+            }
+
+            if (prevTrick.trickPlayers[0] === 1) {
+                prevTrick.trickPlayers.push(2);
+            } else {
+                prevTrick.trickPlayers.push(1);
+            }
+
+            setCompletedTrick({ trick: prevTrick.trick, trickPlayers: prevTrick.trickPlayers });
+            setTimeout(() => setCompletedTrick(null), TRICK_DISPLAY_DURATION_MS);
+            prevTrickRef.current = { trick: gameState.trick, trickPlayers: gameState.trickPlayers, hands: gameState.hands };
+        }
+        prevTrickRef.current = { trick: gameState.trick, trickPlayers: gameState.trickPlayers, hands: gameState.hands };
+    }, [gameState.trick, gameState.trickPlayers]);
+
+    // Use completed trick for display if we're in the delay period
+    const displayTrick = completedTrick ?? { trick: gameState.trick, trickPlayers: gameState.trickPlayers };
+    const isTrickCompleteDisplay = completedTrick !== null;
+    console.log(completedTrick);
 
     const myPlayerNum = (() => {
         if (myBrowserId === gameState.p1) return 1;
@@ -277,16 +317,16 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
             )}
 
             {/* Trick area */}
-            {gameState.phase === 2 && (
-                <div className="flex justify-center gap-4 mb-3 min-h-[90px] items-center py-2 px-4 rounded-xl mx-auto"
+            {(gameState.phase === 2 || isTrickCompleteDisplay) && (
+                <div className={`flex justify-center gap-4 mb-3 min-h-[90px] items-center py-2 px-4 rounded-xl mx-auto transition-all ${isTrickCompleteDisplay ? "ring-2 ring-yellow-400/40" : ""}`}
                     style={{ background: "rgba(0,60,30,0.25)", border: "1px solid rgba(74,222,128,0.1)" }}>
-                    {gameState.trick.length === 0 ? (
+                    {displayTrick.trick.length === 0 ? (
                         <div className="text-xs text-gray-600 italic">Play a card to start the trick</div>
                     ) : (
-                        gameState.trick.map((card, i) => (
+                        displayTrick.trick.map((card, i) => (
                             <div key={i} className="flex flex-col items-center gap-1">
                                 <span className="text-[9px] text-gray-500 font-medium">
-                                    P{gameState.trickPlayers[i]}
+                                    P{displayTrick.trickPlayers[i]}
                                 </span>
                                 <CardSvg suit={card.suit} rank={card.rank} width={52} height={76} disabled />
                             </div>
@@ -300,7 +340,7 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
                 <div className="mt-2">
                     <div className="text-[10px] text-gray-500 text-center mb-1 font-medium">Your hand ({sortedHand.length})</div>
                     <div className="flex flex-wrap justify-center gap-1">
-                        {sortedHand.map((card, i) => {
+                        {(gameState.phase === 1 ? myHand.slice(0, 5) : sortedHand).map((card, i) => {
                             const key = cardToStr(card);
                             const canPlay = playableCards.has(key);
                             return (
