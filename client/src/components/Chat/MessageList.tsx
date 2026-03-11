@@ -54,7 +54,7 @@ export default function MessageList({
         });
     }, []);
 
-    // Initial message load
+    // Initial message load — use cache if available, then sync from API
     useEffect(() => {
         setMessages([]);
         setHasMore(true);
@@ -77,6 +77,7 @@ export default function MessageList({
             setTimeout(() => scrollToBottom(false), 50);
         });
     }, [chatId, setMessages, scrollToBottom]);
+
 
     // Refetch messages when returning from background (visibility change)
     useEffect(() => {

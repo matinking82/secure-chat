@@ -209,7 +209,7 @@ export default function MessageBubble({
         setFileDecrypting(false);
     }, [msg.file, msg.originalName, chatId, updateDecryptedFileUrl]);
 
-    // ─── Decrypt text ───
+    // ─── Decrypt text (with in-memory cache) ───
     useEffect(() => {
         if (msg.text) {
             const key = getEncryptionKey(chatId);
@@ -657,7 +657,8 @@ export default function MessageBubble({
                     ) : decrypted.text ? (
                         <div
                             dir="auto"
-                            className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${decrypted.failed ? "text-red-400 italic" : "text-white"}`}
+                            className={`text-[15px] leading-relaxed break-words whitespace-pre-wrap ${decrypted.failed ? "text-red-400 italic" : "text-white"
+                                }`}
                             style={{ unicodeBidi: "plaintext" }}
                         >
                             {decrypted.failed ? renderTextWithEmoji(decrypted.text, 20) : renderTextWithLinks(decrypted.text, 20)}
