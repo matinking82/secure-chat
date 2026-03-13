@@ -10,6 +10,7 @@ import { useAudioPlayer } from "../../contexts/AudioPlayerContext";
 import { useUser } from "../../contexts/UserContext";
 import { renderTextWithEmoji } from "../../lib/emojiService";
 import { sendMessage } from "../../lib/api";
+import { saveGif, saveSticker } from "../../lib/gifStickerStore";
 import AudioPlayer from "./AudioPlayer";
 import MessageContextMenu from "./MessageContextMenu";
 import MediaViewer from "./MediaViewer";
@@ -231,7 +232,7 @@ export default function MessageBubble({
 
     // ─── Auto-decrypt media files ───
     useEffect(() => {
-        if (msg.file && (msg.fileType === "image" || msg.fileType === "video" || msg.fileType === "audio")) {
+        if (msg.file && (msg.fileType === "image" || msg.fileType === "video" || msg.fileType === "audio" || msg.fileType === "gif" || msg.fileType === "sticker")) {
             doDecryptFile();
         }
     }, [msg.file, msg.fileType, doDecryptFile]);
@@ -358,6 +359,26 @@ export default function MessageBubble({
         // Left-click should not open it.
     };
 
+    // ─── Save GIF/Sticker to local collection ───
+    const isGifOrSticker = msg.fileType === "gif" || msg.fileType === "sticker";
+    const canSaveToCollection = isGifOrSticker && !!decryptedFileUrl;
+
+    const handleSaveToCollection = useCallback(async () => {
+        if (!decryptedFileUrl || !msg.file) return;
+        try {
+            const response = await fetch(decryptedFileUrl);
+            const blob = await response.blob();
+            const name = msg.originalName || (msg.fileType === "gif" ? "saved.mp4" : "saved.png");
+            if (msg.fileType === "gif") {
+                await saveGif(blob, name);
+            } else if (msg.fileType === "sticker") {
+                await saveSticker(blob, name);
+            }
+        } catch (err) {
+            console.error("Failed to save to collection:", err);
+        }
+    }, [decryptedFileUrl, msg.file, msg.fileType, msg.originalName]);
+
     const handleReaction = (emoji: string) => {
         socket?.emit("react_message", {
             chatId,
@@ -400,6 +421,7 @@ export default function MessageBubble({
     });
 
     const isVoiceMessage = msg.fileType === "audio" && msg.originalName?.startsWith("voice-");
+    const isBorderlessMedia = isGifOrSticker && !msg.text;
 
     return (
         <>
@@ -414,10 +436,13 @@ export default function MessageBubble({
             >
                 <div
                     data-own={isMine ? "true" : "false"}
-                    className={`sc-message-bubble max-w-[85%] md:max-w-[65%] rounded-2xl px-3.5 py-2 relative
-                        ${isMine
-                            ? "bg-[#2b5278] rounded-br-md"
-                            : "bg-[#182533] rounded-bl-md"
+                    className={`sc-message-bubble max-w-[85%] md:max-w-[65%] relative
+                        ${isBorderlessMedia
+                            ? "px-0 py-0"
+                            : `rounded-2xl px-3.5 py-2 ${isMine
+                                ? "bg-[#2b5278] rounded-br-md"
+                                : "bg-[#182533] rounded-bl-md"
+                            }`}
                         }`}
                 >
                     {/* Sender name (clickable to open PV) */}
@@ -489,6 +514,34 @@ export default function MessageBubble({
                                     trackId={msg.id}
                                     name={isVoiceMessage ? undefined : msg.originalName}
                                     isVoice={isVoiceMessage}
+                                />
+                            )}
+                            {msg.fileType === "gif" && decryptedFileUrl && (
+                                (() => {
+                                    const isVideoGif = msg.originalName ? /\.(mp4|webm|mov|mkv|avi)$/i.test(msg.originalName) : true;
+                                    return isVideoGif ? (
+                                        <video
+                                            src={decryptedFileUrl}
+                                            className="max-h-52 max-w-[240px] rounded-lg object-contain"
+                                            autoPlay
+                                            loop
+                                            muted
+                                            playsInline
+                                        />
+                                    ) : (
+                                        <img
+                                            src={decryptedFileUrl}
+                                            alt="GIF"
+                                            className="max-h-52 max-w-[240px] rounded-lg object-contain"
+                                        />
+                                    );
+                                })()
+                            )}
+                            {msg.fileType === "sticker" && decryptedFileUrl && (
+                                <img
+                                    src={decryptedFileUrl}
+                                    alt="Sticker"
+                                    className="max-h-44 max-w-[200px] object-contain"
                                 />
                             )}
                             {!decryptedFileUrl && (
@@ -690,7 +743,7 @@ export default function MessageBubble({
                     )}
 
                     {/* Bottom row: edited badge + encryption badge + time + seen status */}
-                    <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                    <div className={`flex items-center justify-end gap-1.5 mt-0.5 ${isBorderlessMedia ? "absolute bottom-1 right-1 bg-black/50 rounded-full px-1.5 py-0.5" : ""}`}>
                         {msg.edited && (
                             <span className="text-[10px] text-gray-500 italic">edited</span>
                         )}
@@ -780,6 +833,7 @@ export default function MessageBubble({
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onReact={handleReaction}
+                    onSaveToCollection={canSaveToCollection ? handleSaveToCollection : undefined}
                     onClose={() => setContextMenu(null)}
                     position={contextMenu}
                 />,

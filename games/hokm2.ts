@@ -1,17 +1,20 @@
 // ─── Hokm 2-Player game logic (server-side) ───
-// Format: GAME::HOKM2::{p1}:{p2}:{hakem}:{trump}:{turn}:{p1tricks}:{p2tricks}:{p1score}:{p2score}:{phase}:{hands}:{trick}:{leadSuit}
+// Format: GAME::HOKM2::{p1}:{p2}:{hakem}:{trump}:{turn}:{p1tricks}:{p2tricks}:{p1score}:{p2score}:{hands}:{trick}:{phase}:{leadSuit}:{drawPile}:{drawnCard}:{hakemDiscardCount}
 // hakem: 1 or 2 (who is hakem this round)
 // trump: 0=none,1=spades,2=hearts,3=diamonds,4=clubs
 // turn: 1 or 2
 // p1tricks/p2tricks: tricks won this round (0-13)
 // p1score/p2score: rounds won (match score, first to 7)
-// phase: 0=waiting, 1=selectTrump, 2=playing, 3=roundOver, 4=matchOver
+// phase: 0=waiting, 1=selectTrump, 2=playing, 3=roundOver, 4=matchOver,
+//        5=discardHakem, 6=discardOther, 7=drawPhase
 // hands: h1:[card,...];h2:[card,...] (each card is suitRank e.g. S14=Ace of Spades)
 // trick: card1,card2 (cards played this trick)
 // leadSuit: 0-4 suit of first card played in current trick
+// drawPile: card1,card2,... (remaining undealt cards)
+// drawnCard: card or empty (the card revealed from draw pile for current player to accept/refuse)
+// hakemDiscardCount: 0,2,3 (how many cards hakem discarded)
 
 const SUITS = ["", "S", "H", "D", "C"]; // 1=Spades,2=Hearts,3=Diamonds,4=Clubs
-const SUIT_NAMES = ["", "Spades", "Hearts", "Diamonds", "Clubs"];
 const RANK_ORDER = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // 11=J,12=Q,13=K,14=A
 
 export interface Card {
@@ -29,11 +32,15 @@ export interface Hokm2State {
     p2Tricks: number;
     p1Score: number;     // rounds won (match)
     p2Score: number;
-    phase: number;       // 0=waiting,1=selectTrump,2=playing,3=roundOver,4=matchOver
+    phase: number;       // 0=waiting,1=selectTrump,2=playing,3=roundOver,4=matchOver,
+                         // 5=discardHakem,6=discardOther,7=drawPhase
     hands: [Card[], Card[]]; // [p1hand, p2hand]
     trick: Card[];       // cards played this trick (0-2)
     trickPlayers: number[]; // which player played each trick card
     leadSuit: number;    // suit led this trick
+    drawPile: Card[];    // remaining cards to draw from
+    drawnCard: Card | null; // current top card revealed in draw phase
+    hakemDiscardCount: number; // how many cards hakem chose to discard (2 or 3)
 }
 
 function cardToStr(c: Card): string {
@@ -77,6 +84,15 @@ function decodeTrick(s: string): { trick: Card[]; trickPlayers: number[] } {
     return { trick, trickPlayers };
 }
 
+function encodeCardList(cards: Card[]): string {
+    return cards.map(cardToStr).join(",");
+}
+
+function decodeCardList(s: string): Card[] {
+    if (!s) return [];
+    return s.split(",").filter(x => x).map(strToCard);
+}
+
 export function parseHokm2(text: string): Hokm2State | null {
     if (!text.startsWith("GAME::HOKM2::")) return null;
     const parts = text.slice("GAME::HOKM2::".length).split(":");
@@ -84,6 +100,11 @@ export function parseHokm2(text: string): Hokm2State | null {
 
     const hands = decodeHands(parts[9]);
     const { trick, trickPlayers } = decodeTrick(parts[10]);
+
+    // Parse new fields (backward compatible)
+    const drawPile = parts.length > 13 ? decodeCardList(parts[13]) : [];
+    const drawnCard = parts.length > 14 && parts[14] ? strToCard(parts[14]) : null;
+    const hakemDiscardCount = parts.length > 15 ? (parseInt(parts[15]) || 0) : 0;
 
     return {
         p1: parts[0],
@@ -100,11 +121,15 @@ export function parseHokm2(text: string): Hokm2State | null {
         trick,
         trickPlayers,
         leadSuit: parseInt(parts[12]) || 0,
+        drawPile,
+        drawnCard,
+        hakemDiscardCount,
     };
 }
 
 export function serializeHokm2(s: Hokm2State): string {
-    return `GAME::HOKM2::${s.p1}:${s.p2}:${s.hakem}:${s.trump}:${s.turn}:${s.p1Tricks}:${s.p2Tricks}:${s.p1Score}:${s.p2Score}:${encodeHands(s.hands)}:${encodeTrick(s.trick, s.trickPlayers)}:${s.phase}:${s.leadSuit}`;
+    const drawnStr = s.drawnCard ? cardToStr(s.drawnCard) : "";
+    return `GAME::HOKM2::${s.p1}:${s.p2}:${s.hakem}:${s.trump}:${s.turn}:${s.p1Tricks}:${s.p2Tricks}:${s.p1Score}:${s.p2Score}:${encodeHands(s.hands)}:${encodeTrick(s.trick, s.trickPlayers)}:${s.phase}:${s.leadSuit}:${encodeCardList(s.drawPile)}:${drawnStr}:${s.hakemDiscardCount}`;
 }
 
 function createDeck(): Card[] {
@@ -126,26 +151,18 @@ function shuffle<T>(arr: T[]): T[] {
     return a;
 }
 
-/** Initialize a new round (deal 5 cards to each, hakem selects trump) */
+/** Initialize a new round: deal 5 cards to each, rest goes to draw pile. Hakem selects trump. */
 export function hokm2StartRound(state: Hokm2State): Hokm2State {
     const deck = shuffle(createDeck());
-    // Deal only from 26 cards (2-player hokm uses 26 cards total - 13 each)
-    const selected = deck.slice(0, 26);
-    // Deal first 5 to each player
-    const h1 = selected.slice(0, 5);
-    const h2 = selected.slice(5, 10);
-    // Store remaining 16 cards somehow - we'll pack them into a special encoding
-    // Actually: deal 5 each first, then after trump: deal remaining 8 each
-    // We need to store the undelt cards. Let's put them in the trick field temporarily
-    // Better: store full hands as dealt but mark phase appropriately
-    // Actually let's deal all 13 at once but hakem chooses trump after seeing first 5
-    // For simplicity: deal all 13 now. Hakem sees first 5 to pick trump, then all are revealed.
-    const p1Hand = selected.slice(0, 13);
-    const p2Hand = selected.slice(13, 26);
+    // Use all 52 cards; deal 5 to each, rest is draw pile
+    const h1 = deck.slice(0, 5);
+    const h2 = deck.slice(5, 10);
+    // Remaining 42 cards go to draw pile
+    const drawPile = deck.slice(10);
 
     return {
         ...state,
-        hands: [p1Hand, p2Hand],
+        hands: [h1, h2],
         trick: [],
         trickPlayers: [],
         leadSuit: 0,
@@ -154,10 +171,13 @@ export function hokm2StartRound(state: Hokm2State): Hokm2State {
         turn: state.hakem,
         phase: 1, // selectTrump
         trump: 0,
+        drawPile,
+        drawnCard: null,
+        hakemDiscardCount: 0,
     };
 }
 
-/** Hakem selects trump suit (1-4) */
+/** Hakem selects trump suit (1-4), then moves to discard phase */
 export function hokm2SelectTrump(state: Hokm2State, playerNum: number, suit: number): Hokm2State | null {
     if (state.phase !== 1) return null;
     if (playerNum !== state.hakem) return null;
@@ -166,8 +186,153 @@ export function hokm2SelectTrump(state: Hokm2State, playerNum: number, suit: num
     return {
         ...state,
         trump: suit,
-        phase: 2, // playing
-        turn: state.hakem, // hakem leads first trick
+        phase: 5, // discardHakem
+        turn: state.hakem,
+    };
+}
+
+/** Hakem discards 2 or 3 cards from their 5-card hand */
+export function hokm2DiscardCards(state: Hokm2State, playerNum: number, cardIndices: number[]): Hokm2State | null {
+    if (state.phase === 5) {
+        // Hakem discarding
+        if (playerNum !== state.hakem) return null;
+        if (cardIndices.length !== 2 && cardIndices.length !== 3) return null;
+
+        const handIdx = playerNum - 1;
+        const hand = state.hands[handIdx];
+        // Validate indices
+        const uniqueIndices = [...new Set(cardIndices)].sort((a, b) => b - a);
+        if (uniqueIndices.length !== cardIndices.length) return null;
+        for (const idx of uniqueIndices) {
+            if (idx < 0 || idx >= hand.length) return null;
+        }
+
+        // Remove discarded cards from hand
+        const newHand = [...hand];
+        for (const idx of uniqueIndices) {
+            newHand.splice(idx, 1);
+        }
+
+        const newHands: [Card[], Card[]] = [...state.hands] as [Card[], Card[]];
+        newHands[handIdx] = newHand;
+
+        const otherPlayer = state.hakem === 1 ? 2 : 1;
+        return {
+            ...state,
+            hands: newHands,
+            hakemDiscardCount: cardIndices.length,
+            phase: 6, // discardOther
+            turn: otherPlayer,
+        };
+    } else if (state.phase === 6) {
+        // Other player discarding
+        const otherPlayer = state.hakem === 1 ? 2 : 1;
+        if (playerNum !== otherPlayer) return null;
+
+        // Other player must discard complementary amount
+        const requiredDiscard = state.hakemDiscardCount === 2 ? 3 : 2;
+        if (cardIndices.length !== requiredDiscard) return null;
+
+        const handIdx = playerNum - 1;
+        const hand = state.hands[handIdx];
+        const uniqueIndices = [...new Set(cardIndices)].sort((a, b) => b - a);
+        if (uniqueIndices.length !== cardIndices.length) return null;
+        for (const idx of uniqueIndices) {
+            if (idx < 0 || idx >= hand.length) return null;
+        }
+
+        const newHand = [...hand];
+        for (const idx of uniqueIndices) {
+            newHand.splice(idx, 1);
+        }
+
+        const newHands: [Card[], Card[]] = [...state.hands] as [Card[], Card[]];
+        newHands[handIdx] = newHand;
+
+        // Determine who starts draw phase: the player who has 2 cards (discarded 3)
+        let drawStarter: number;
+        if (state.hakemDiscardCount === 3) {
+            drawStarter = state.hakem; // hakem discarded 3, has 2 cards
+        } else {
+            drawStarter = otherPlayer; // other player discarded 3, has 2 cards
+        }
+
+        // Reveal top card for the draw starter
+        const drawPile = [...state.drawPile];
+        let drawnCard: Card | null = null;
+        if (drawPile.length > 0) {
+            drawnCard = drawPile.shift()!;
+        }
+
+        return {
+            ...state,
+            hands: newHands,
+            phase: 7, // drawPhase
+            turn: drawStarter,
+            drawPile,
+            drawnCard,
+        };
+    }
+    return null;
+}
+
+/** Draw phase: player accepts or refuses the shown top card */
+export function hokm2DrawCard(state: Hokm2State, playerNum: number, accept: boolean): Hokm2State | null {
+    if (state.phase !== 7) return null;
+    if (playerNum !== state.turn) return null;
+    if (!state.drawnCard) return null;
+
+    const handIdx = playerNum - 1;
+    const newHands: [Card[], Card[]] = [
+        [...state.hands[0]],
+        [...state.hands[1]],
+    ];
+    const drawPile = [...state.drawPile];
+
+    if (accept) {
+        // Player accepts the shown card → add to their hand
+        newHands[handIdx].push(state.drawnCard);
+        // Next card from draw pile is discarded (unseen)
+        if (drawPile.length > 0) {
+            drawPile.shift(); // discard unseen
+        }
+    } else {
+        // Player refuses → next card from draw pile goes to their hand
+        if (drawPile.length > 0) {
+            const nextCard = drawPile.shift()!;
+            newHands[handIdx].push(nextCard);
+        } else {
+            // No more cards to draw, the shown card is added instead
+            newHands[handIdx].push(state.drawnCard);
+        }
+    }
+
+    // Switch to next player
+    const otherPlayer = playerNum === 1 ? 2 : 1;
+
+    // Check if draw pile is empty (no more cards to reveal)
+    if (drawPile.length === 0) {
+        // Draw phase complete, move to playing
+        return {
+            ...state,
+            hands: newHands,
+            drawPile: [],
+            drawnCard: null,
+            phase: 2, // playing
+            turn: state.hakem, // hakem leads first trick
+        };
+    }
+
+    // Reveal next card for the other player
+    const nextDrawn = drawPile.shift()!;
+
+    // Check again if pile is now empty after revealing
+    return {
+        ...state,
+        hands: newHands,
+        drawPile,
+        drawnCard: nextDrawn,
+        turn: otherPlayer,
     };
 }
 
@@ -280,7 +445,6 @@ function determineTrickWinner(trick: Card[], players: number[], leadSuit: number
     if (card1.suit === trump && card2.suit !== trump) return player1;
     if (card2.suit === trump && card1.suit !== trump) return player2;
 
-    // Both trump (handled by same suit above)
     // Neither is trump - card that followed the lead suit wins
     if (card1.suit === leadSuit) return player1;
     if (card2.suit === leadSuit) return player2;

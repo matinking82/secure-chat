@@ -224,6 +224,40 @@ export default function ChatInput({ chatId, replyTo, onClearReply, editingMessag
         }
     };
 
+    // ─── Send GIF or Sticker from emoji panel ───
+    const handleSendGifOrSticker = async (mediaFile: File, mediaType: "gif" | "sticker") => {
+        if (sending) return;
+        setSending(true);
+        try {
+            const key = getEncryptionKey(chatId);
+            const displayName = getDisplayName();
+            const buffer = await mediaFile.arrayBuffer();
+            const encryptedBuffer = key
+                ? await encryptFile(buffer, key, chatId)
+                : buffer;
+
+            await uploadFile(
+                chatId,
+                new Blob([encryptedBuffer]),
+                displayName,
+                settings.browserId,
+                mediaType,
+                mediaFile.name,
+                "",
+                replyTo?.id
+            );
+
+            setShowEmoji(false);
+            onClearReply();
+        } catch (err) {
+            console.error("Failed to send " + mediaType + ":", err);
+        }
+        setSending(false);
+    };
+
+    const handleSendGif = (mediaFile: File) => handleSendGifOrSticker(mediaFile, "gif");
+    const handleSendSticker = (mediaFile: File) => handleSendGifOrSticker(mediaFile, "sticker");
+
     const handleSend = async () => {
         if ((!text.trim() && !file) || sending) return;
         setSending(true);
@@ -604,6 +638,8 @@ export default function ChatInput({ chatId, replyTo, onClearReply, editingMessag
                 <EmojiPicker
                     onSelect={handleEmojiSelect}
                     onClose={() => setShowEmoji(false)}
+                    onSendGif={handleSendGif}
+                    onSendSticker={handleSendSticker}
                 />
             )}
 

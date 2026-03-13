@@ -14,6 +14,7 @@ interface MessageContextMenuProps {
     onEdit?: (msg: ChatMessage) => void;
     onDelete?: (msg: ChatMessage) => void;
     onReact?: (emoji: string) => void;
+    onSaveToCollection?: () => void;
     onClose: () => void;
     position: { x: number; y: number };
 }
@@ -26,6 +27,7 @@ export default function MessageContextMenu({
     onEdit,
     onDelete,
     onReact,
+    onSaveToCollection,
     onClose,
     position,
 }: MessageContextMenuProps) {
@@ -95,7 +97,13 @@ export default function MessageContextMenu({
         onClose();
     };
 
+    const handleSaveToCollection = () => {
+        onSaveToCollection?.();
+        onClose();
+    };
+
     const isMine = msg.browserId === getBrowserId();
+    const isGifOrSticker = msg.fileType === "gif" || msg.fileType === "sticker";
 
     return (
         <div
@@ -178,6 +186,20 @@ export default function MessageContextMenu({
                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         Download
+                    </button>
+                )}
+
+                {/* Save to my GIFs/Stickers (for gif/sticker messages with decrypted file) */}
+                {isGifOrSticker && decryptedFileUrl && onSaveToCollection && (
+                    <button
+                        onClick={handleSaveToCollection}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition text-left"
+                    >
+                        <svg className="w-[18px] h-[18px] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                        {msg.fileType === "gif" ? "Save to my GIFs" : "Save to my Stickers"}
                     </button>
                 )}
 

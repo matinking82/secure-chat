@@ -25,6 +25,9 @@ export interface Hokm2State {
     trick: Card[];
     trickPlayers: number[];
     leadSuit: number;
+    drawPile: Card[];
+    drawnCard: Card | null;
+    hakemDiscardCount: number;
 }
 
 const SUITS = ["", "S", "H", "D", "C"];
@@ -61,7 +64,7 @@ function decodeTrick(s: string): { trick: Card[]; trickPlayers: number[] } {
 
 /** Create a fresh Hokm2 game */
 export function createHokm2(initiatorBrowserId: string): string {
-    return `GAME::HOKM2::${initiatorBrowserId}:?:1:0:1:0:0:0:0:;:0:0`;
+    return `GAME::HOKM2::${initiatorBrowserId}:?:1:0:1:0:0:0:0:;:0:0:::0`;
 }
 
 export function isHokm2Message(text: string): boolean {
@@ -79,6 +82,11 @@ export function parseHokm2(text: string): Hokm2State | null {
     })();
     const { trick, trickPlayers } = decodeTrick(parts[10]);
 
+    // Parse new fields (backward compatible)
+    const drawPile = parts.length > 13 ? decodeCards(parts[13]) : [];
+    const drawnCard = parts.length > 14 && parts[14] ? strToCard(parts[14]) : null;
+    const hakemDiscardCount = parts.length > 15 ? (parseInt(parts[15]) || 0) : 0;
+
     return {
         p1: parts[0],
         p2: parts[1],
@@ -94,6 +102,9 @@ export function parseHokm2(text: string): Hokm2State | null {
         trick,
         trickPlayers,
         leadSuit: parseInt(parts[12]) || 0,
+        drawPile,
+        drawnCard,
+        hakemDiscardCount,
     };
 }
 
@@ -112,32 +123,30 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
     const { socket } = useChat();
     useCardPreloader();
 
-    // ─── Trick completion delay: show completed trick for 2.5s ───
+    // ─── Trick completion delay ───
     const prevTrickRef = useRef<{ trick: Card[]; trickPlayers: number[]; hands: [Card[], Card[]] }>({ trick: [], trickPlayers: [], hands: [[], []] });
     const [completedTrick, setCompletedTrick] = useState<{ trick: Card[]; trickPlayers: number[] } | null>(null);
 
+    // ─── Discard selection ───
+    const [selectedDiscards, setSelectedDiscards] = useState<Set<number>>(new Set());
+
     useEffect(() => {
         const prevTrick = prevTrickRef.current;
-        // Detect trick completion: previous trick had 2 cards (full), current trick is empty or has fewer
         if (prevTrick.trick.length === 1 && gameState.trick.length === 0) {
-            //add the last played card
             for (let i = 0; i < prevTrick.hands.length; i++) {
                 const prevHand = prevTrick.hands[i];
-                const curentHand = gameState.hands[i];
-
-                for (let card of prevHand) {
-                    if (!curentHand.find(c => c.rank === card.rank && c.suit === card.suit)) {
+                const currentHand = gameState.hands[i];
+                for (const card of prevHand) {
+                    if (!currentHand.find(c => c.rank === card.rank && c.suit === card.suit)) {
                         prevTrick.trick.push(card);
                     }
                 }
             }
-
             if (prevTrick.trickPlayers[0] === 1) {
                 prevTrick.trickPlayers.push(2);
             } else {
                 prevTrick.trickPlayers.push(1);
             }
-
             setCompletedTrick({ trick: prevTrick.trick, trickPlayers: prevTrick.trickPlayers });
             setTimeout(() => setCompletedTrick(null), TRICK_DISPLAY_DURATION_MS);
             prevTrickRef.current = { trick: gameState.trick, trickPlayers: gameState.trickPlayers, hands: gameState.hands };
@@ -145,10 +154,13 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
         prevTrickRef.current = { trick: gameState.trick, trickPlayers: gameState.trickPlayers, hands: gameState.hands };
     }, [gameState.trick, gameState.trickPlayers]);
 
-    // Use completed trick for display if we're in the delay period
+    // Reset discard selection when phase changes
+    useEffect(() => {
+        setSelectedDiscards(new Set());
+    }, [gameState.phase]);
+
     const displayTrick = completedTrick ?? { trick: gameState.trick, trickPlayers: gameState.trickPlayers };
     const isTrickCompleteDisplay = completedTrick !== null;
-    console.log(completedTrick);
 
     const myPlayerNum = (() => {
         if (myBrowserId === gameState.p1) return 1;
@@ -179,6 +191,47 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
         return set;
     }, [isMyTurn, sortedHand, gameState.trick, gameState.leadSuit]);
 
+    // ─── Discard phase helpers ───
+    const isDiscardPhase = gameState.phase === 5 || gameState.phase === 6;
+    const isMyDiscard = isDiscardPhase && gameState.turn === myPlayerNum;
+
+    const discardMin = (() => {
+        if (gameState.phase === 5) return 2; // hakem can discard 2 or 3
+        if (gameState.phase === 6) {
+            return gameState.hakemDiscardCount === 2 ? 3 : 2;
+        }
+        return 0;
+    })();
+
+    const discardMax = (() => {
+        if (gameState.phase === 5) return 3;
+        if (gameState.phase === 6) {
+            return gameState.hakemDiscardCount === 2 ? 3 : 2;
+        }
+        return 0;
+    })();
+
+    const canConfirmDiscard = isMyDiscard && selectedDiscards.size >= discardMin && selectedDiscards.size <= discardMax;
+
+    const toggleDiscardCard = (idx: number) => {
+        if (!isMyDiscard) return;
+        setSelectedDiscards(prev => {
+            const next = new Set(prev);
+            if (next.has(idx)) {
+                next.delete(idx);
+            } else {
+                if (next.size < discardMax) {
+                    next.add(idx);
+                }
+            }
+            return next;
+        });
+    };
+
+    // ─── Draw phase helpers ───
+    const isDrawPhase = gameState.phase === 7;
+    const isMyDraw = isDrawPhase && gameState.turn === myPlayerNum;
+
     const handleSelectTrump = (suit: number) => {
         socket?.emit("hokm2_trump", { chatId, messageId, suit, browserId: myBrowserId });
     };
@@ -188,6 +241,27 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
         const handIdx = myHand.findIndex(c => c.suit === card.suit && c.rank === card.rank);
         if (handIdx === -1) return;
         socket?.emit("hokm2_play", { chatId, messageId, cardIndex: handIdx, browserId: myBrowserId });
+    };
+
+    const handleConfirmDiscard = () => {
+        if (!canConfirmDiscard) return;
+        const indices = Array.from(selectedDiscards);
+        // Map sorted hand indices back to original hand indices
+        const originalIndices = indices.map(sortedIdx => {
+            const card = sortedHand[sortedIdx];
+            return myHand.findIndex(c => c.suit === card.suit && c.rank === card.rank);
+        });
+        socket?.emit("hokm2_discard", { chatId, messageId, cardIndices: originalIndices, browserId: myBrowserId });
+    };
+
+    const handleDrawAccept = () => {
+        if (!isMyDraw) return;
+        socket?.emit("hokm2_draw", { chatId, messageId, accept: true, browserId: myBrowserId });
+    };
+
+    const handleDrawRefuse = () => {
+        if (!isMyDraw) return;
+        socket?.emit("hokm2_draw", { chatId, messageId, accept: false, browserId: myBrowserId });
     };
 
     const handleNewRound = () => {
@@ -204,24 +278,46 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
 
     if (gameState.phase === 0) {
         if (gameState.p2 === "?") {
-            statusText = myPlayerNum === 1 ? "⏳ Waiting for opponent..." : "🎮 Tap Join to play!";
+            statusText = myPlayerNum === 1 ? "\u23F3 Waiting for opponent..." : "\uD83C\uDFAE Tap Join to play!";
         } else {
             statusText = "Starting...";
         }
     } else if (gameState.phase === 1) {
-        statusText = isHakem ? "👑 You are Hakem! Select trump suit" : "👑 Hakem is selecting trump...";
+        statusText = isHakem ? "\uD83D\uDC51 You are Hakem! Select trump suit" : "\uD83D\uDC51 Hakem is selecting trump...";
         statusColor = isHakem ? "text-yellow-400" : "text-gray-400";
     } else if (gameState.phase === 2) {
-        statusText = isMyTurn ? "�� Your turn — play a card" : "⏳ Opponent's turn...";
+        statusText = isMyTurn ? "\uD83C\uDFAF Your turn \u2014 play a card" : "\u23F3 Opponent's turn...";
         statusColor = isMyTurn ? "text-green-400" : "text-gray-400";
     } else if (gameState.phase === 3) {
         const winner = gameState.p1Tricks >= 7 ? 1 : 2;
-        statusText = winner === myPlayerNum ? "🏆 You won this round!" : "😔 You lost this round";
+        statusText = winner === myPlayerNum ? "\uD83C\uDFC6 You won this round!" : "\uD83D\uDE14 You lost this round";
         statusColor = winner === myPlayerNum ? "text-yellow-400" : "text-red-400";
     } else if (gameState.phase === 4) {
         const winner = gameState.p1Score >= 7 ? 1 : 2;
-        statusText = winner === myPlayerNum ? "🏆🏆 You won the match!" : "Match over — opponent wins";
+        statusText = winner === myPlayerNum ? "\uD83C\uDFC6\uD83C\uDFC6 You won the match!" : "Match over \u2014 opponent wins";
         statusColor = winner === myPlayerNum ? "text-yellow-400" : "text-red-400";
+    } else if (gameState.phase === 5) {
+        if (isHakem && myPlayerNum === gameState.turn) {
+            statusText = "\uD83D\uDC51 Discard 2 or 3 cards from your hand";
+            statusColor = "text-yellow-400";
+        } else {
+            statusText = "\uD83D\uDC51 Hakem is discarding cards...";
+        }
+    } else if (gameState.phase === 6) {
+        if (myPlayerNum === gameState.turn) {
+            const required = gameState.hakemDiscardCount === 2 ? 3 : 2;
+            statusText = `\uD83C\uDCCF Discard ${required} cards from your hand`;
+            statusColor = "text-yellow-400";
+        } else {
+            statusText = "\u23F3 Opponent is discarding cards...";
+        }
+    } else if (gameState.phase === 7) {
+        if (isMyDraw) {
+            statusText = "\uD83C\uDCCF Accept or refuse the drawn card";
+            statusColor = "text-green-400";
+        } else {
+            statusText = "\u23F3 Opponent is drawing...";
+        }
     }
 
     return (
@@ -229,17 +325,17 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
             {/* Header */}
             <div className="text-center mb-3">
                 <div className="text-sm font-bold tracking-wide text-gray-300 mb-1">
-                    🃏 حکم دو نفره — Hokm 2P
+                    {"\uD83C\uDCCF"} {"\u062D\u06A9\u0645 \u062F\u0648 \u0646\u0641\u0631\u0647"} {"\u2014"} Hokm 2P
                 </div>
                 <div className="flex items-center justify-center gap-3 text-xs text-gray-400">
                     <span className="flex items-center gap-1">
-                        {gameState.hakem === 1 && <span className="text-yellow-400">👑</span>}
+                        {gameState.hakem === 1 && <span className="text-yellow-400">{"\uD83D\uDC51"}</span>}
                         <span className="text-blue-400 font-bold">P1</span>
                         {gameState.p1 === myBrowserId ? " (You)" : ""}
                     </span>
                     <span className="text-gray-600 font-semibold">vs</span>
                     <span className="flex items-center gap-1">
-                        {gameState.hakem === 2 && <span className="text-yellow-400">👑</span>}
+                        {gameState.hakem === 2 && <span className="text-yellow-400">{"\uD83D\uDC51"}</span>}
                         <span className="text-red-400 font-bold">P2</span>
                         {gameState.p2 === "?" ? " ???" : gameState.p2 === myBrowserId ? " (You)" : ""}
                     </span>
@@ -252,7 +348,7 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
                     <span className="text-blue-400 font-semibold">P1</span>
                     <span className="text-white font-bold text-sm">{gameState.p1Score}</span>
                     <span className="text-gray-500">pts</span>
-                    <span className="text-gray-600 mx-0.5">·</span>
+                    <span className="text-gray-600 mx-0.5">{"\u00B7"}</span>
                     <span className="text-blue-300 font-bold">{gameState.p1Tricks}</span>
                     <span className="text-gray-500">tricks</span>
                 </div>
@@ -260,7 +356,7 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
                     <span className="text-red-400 font-semibold">P2</span>
                     <span className="text-white font-bold text-sm">{gameState.p2Score}</span>
                     <span className="text-gray-500">pts</span>
-                    <span className="text-gray-600 mx-0.5">·</span>
+                    <span className="text-gray-600 mx-0.5">{"\u00B7"}</span>
                     <span className="text-red-300 font-bold">{gameState.p2Tricks}</span>
                     <span className="text-gray-500">tricks</span>
                 </div>
@@ -288,7 +384,7 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
                         className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
                         style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)" }}
                     >
-                        🎮 Join Game
+                        {"\uD83C\uDFAE"} Join Game
                     </button>
                 </div>
             )}
@@ -296,7 +392,7 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
             {/* Trump selection */}
             {gameState.phase === 1 && isHakem && (
                 <div className="flex flex-col items-center gap-2.5 mb-3">
-                    <div className="text-xs text-yellow-400 font-semibold">👑 Select Trump Suit (حکم)</div>
+                    <div className="text-xs text-yellow-400 font-semibold">{"\uD83D\uDC51"} Select Trump Suit ({"\u062D\u06A9\u0645"})</div>
                     <div className="flex gap-2">
                         {[1, 2, 3, 4].map(suit => (
                             <button
@@ -313,6 +409,63 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
                             </button>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* Draw phase: show drawn card and accept/refuse buttons */}
+            {isDrawPhase && (
+                <div className="flex flex-col items-center gap-2.5 mb-3">
+                    <div className="text-xs text-gray-400 font-medium">
+                        Draw pile: {gameState.drawPile.length} cards remaining
+                    </div>
+                    {gameState.drawnCard && isMyDraw && (
+                        <div className="flex flex-col items-center gap-2">
+                            <div className="text-xs text-gray-500">Top card:</div>
+                            <CardSvg suit={gameState.drawnCard.suit} rank={gameState.drawnCard.rank} width={60} height={88} disabled />
+                            <div className="flex gap-2 mt-1">
+                                <button
+                                    onClick={handleDrawAccept}
+                                    className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:scale-105 active:scale-95 shadow-md"
+                                    style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)" }}
+                                >
+                                    {"\u2713"} Accept
+                                </button>
+                                <button
+                                    onClick={handleDrawRefuse}
+                                    className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:scale-105 active:scale-95 shadow-md"
+                                    style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)" }}
+                                >
+                                    {"\u2717"} Refuse
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    {gameState.drawnCard && !isMyDraw && (
+                        <div className="flex flex-col items-center gap-2 py-3">
+                            <div className="text-xs text-gray-500 italic">{"\u23F3"} Opponent is choosing...</div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Discard phase: confirm button */}
+            {isDiscardPhase && isMyDiscard && (
+                <div className="flex flex-col items-center gap-2 mb-3">
+                    <div className="text-xs text-gray-400">
+                        {gameState.phase === 5
+                            ? `Select ${discardMin} or ${discardMax} cards to discard (${selectedDiscards.size} selected)`
+                            : `Select ${discardMin} cards to discard (${selectedDiscards.size}/${discardMin} selected)`
+                        }
+                    </div>
+                    {canConfirmDiscard && (
+                        <button
+                            onClick={handleConfirmDiscard}
+                            className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
+                            style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)" }}
+                        >
+                            {"\uD83D\uDDD1"} Discard {selectedDiscards.size} cards
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -336,24 +489,39 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
             )}
 
             {/* My hand */}
-            {myPlayerNum > 0 && gameState.phase >= 1 && gameState.phase <= 2 && (
+            {myPlayerNum > 0 && gameState.phase >= 1 && gameState.phase !== 3 && gameState.phase !== 4 && (
                 <div className="mt-2">
                     <div className="text-[10px] text-gray-500 text-center mb-1 font-medium">Your hand ({sortedHand.length})</div>
                     <div className="flex flex-wrap justify-center gap-1">
                         {(gameState.phase === 1 ? myHand.slice(0, 5) : sortedHand).map((card, i) => {
                             const key = cardToStr(card);
                             const canPlay = playableCards.has(key);
+                            const isDiscardSelected = isDiscardPhase && selectedDiscards.has(i);
+                            const canInteract = isDiscardPhase ? isMyDiscard : canPlay;
+
                             return (
-                                <CardSvg
-                                    key={`${key}-${i}`}
-                                    suit={card.suit}
-                                    rank={card.rank}
-                                    width={44}
-                                    height={64}
-                                    onClick={() => canPlay && handlePlayCard(card)}
-                                    disabled={!canPlay}
-                                    highlight={canPlay && isMyTurn}
-                                />
+                                <div key={`${key}-${i}`} className="relative">
+                                    <CardSvg
+                                        suit={card.suit}
+                                        rank={card.rank}
+                                        width={44}
+                                        height={64}
+                                        onClick={() => {
+                                            if (isDiscardPhase && isMyDiscard) {
+                                                toggleDiscardCard(i);
+                                            } else if (canPlay) {
+                                                handlePlayCard(card);
+                                            }
+                                        }}
+                                        disabled={!canInteract}
+                                        highlight={isDiscardPhase ? isDiscardSelected : (canPlay && isMyTurn)}
+                                    />
+                                    {isDiscardSelected && (
+                                        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                                            <span className="text-[8px] text-white font-bold">{"\u2717"}</span>
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
@@ -368,7 +536,7 @@ export default function Hokm2Game({ gameState, messageId, chatId }: Hokm2GamePro
                         className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
                         style={{ background: "linear-gradient(135deg, #4ea4f6, #2b7de9)" }}
                     >
-                        Next Round →
+                        Next Round {"\u2192"}
                     </button>
                 </div>
             )}

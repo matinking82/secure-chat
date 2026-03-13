@@ -19,7 +19,7 @@ import { parseXO, serializeXO, xoMakeMove } from "./games/xo";
 import { parseMinesweeper, serializeMinesweeper, minesweeperReveal, minesweeperToggleFlag } from "./games/minesweeper";
 import { parseOthello, serializeOthello, othelloMakeMove } from "./games/othello";
 import { parseBackgammon, serializeBackgammon, backgammonRollDice, backgammonApplyMove } from "./games/backgammon";
-import { parseHokm2, serializeHokm2, hokm2StartRound, hokm2SelectTrump, hokm2PlayCard, hokm2NewRound } from "./games/hokm2";
+import { parseHokm2, serializeHokm2, hokm2StartRound, hokm2SelectTrump, hokm2PlayCard, hokm2NewRound, hokm2DiscardCards, hokm2DrawCard } from "./games/hokm2";
 import { parseHokm4, serializeHokm4, hokm4StartRound, hokm4SelectTrump, hokm4PlayCard, hokm4NewRound, hokm4JoinPlayer, hokm4AllJoined } from "./games/hokm4";
 import { parseChaarBarg, serializeChaarBarg, chaarBargStartRound, chaarBargPlayCard, chaarBargNewRound } from "./games/chaarbarg";
 
@@ -960,6 +960,66 @@ io.on("connection", (socket) => {
             if (!state) return;
 
             const newState = hokm2NewRound(state);
+            if (!newState) return;
+
+            msg.text = serializeHokm2(newState);
+            io.to(`chat:${chatId}`).emit("message_edited", {
+                chatId, messageId, text: msg.text, edited: false,
+            });
+        }
+    );
+
+    // ─── Hokm 2-Player: discard cards ───
+    socket.on(
+        "hokm2_discard",
+        (data: { chatId: string; messageId: number; cardIndices: number[]; browserId: string }) => {
+            const { chatId, messageId, cardIndices, browserId } = data;
+            const verifiedId = getVerifiedBrowserId(socket.id);
+            if (!verifiedId || verifiedId !== browserId) return;
+            const messages = chat[chatId];
+            if (!messages) return;
+            const msg = messages.find((m) => m.id === messageId);
+            if (!msg) return;
+
+            const state = parseHokm2(msg.text);
+            if (!state) return;
+
+            let playerNum = 0;
+            if (browserId === state.p1) playerNum = 1;
+            else if (browserId === state.p2) playerNum = 2;
+            if (playerNum === 0) return;
+
+            const newState = hokm2DiscardCards(state, playerNum, cardIndices);
+            if (!newState) return;
+
+            msg.text = serializeHokm2(newState);
+            io.to(`chat:${chatId}`).emit("message_edited", {
+                chatId, messageId, text: msg.text, edited: false,
+            });
+        }
+    );
+
+    // ─── Hokm 2-Player: draw card (accept/refuse) ───
+    socket.on(
+        "hokm2_draw",
+        (data: { chatId: string; messageId: number; accept: boolean; browserId: string }) => {
+            const { chatId, messageId, accept, browserId } = data;
+            const verifiedId = getVerifiedBrowserId(socket.id);
+            if (!verifiedId || verifiedId !== browserId) return;
+            const messages = chat[chatId];
+            if (!messages) return;
+            const msg = messages.find((m) => m.id === messageId);
+            if (!msg) return;
+
+            const state = parseHokm2(msg.text);
+            if (!state) return;
+
+            let playerNum = 0;
+            if (browserId === state.p1) playerNum = 1;
+            else if (browserId === state.p2) playerNum = 2;
+            if (playerNum === 0) return;
+
+            const newState = hokm2DrawCard(state, playerNum, accept);
             if (!newState) return;
 
             msg.text = serializeHokm2(newState);
