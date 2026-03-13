@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -25,13 +26,33 @@ import { parseChaarBarg, serializeChaarBarg, chaarBargStartRound, chaarBargPlayC
 
 const app = express();
 const server = http.createServer(app);
+
+// ─── CORS configuration (restrict to allowed origins) ───
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+    : undefined; // undefined = allow all (dev mode)
+
+const corsOptions: cors.CorsOptions = ALLOWED_ORIGINS
+    ? { origin: ALLOWED_ORIGINS }
+    : {};
+
 const io = new SocketIOServer(server, {
-    cors: { origin: "*" },
+    cors: corsOptions,
     maxHttpBufferSize: 30 * 1024 * 1024,
 });
 
-app.use(cors());
-app.use(express.json());
+app.use(cors(corsOptions));
+
+// ─── Security headers ───
+app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+});
+
+app.use(express.json({ limit: "1mb" }));
 
 // ─── Files directory ───
 const FILES_DIR = path.join(__dirname, "files");
@@ -71,6 +92,22 @@ interface ChatMessage {
 
 const chat = {} as { [key: string]: ChatMessage[] };
 let globalMsgId = 0;
+
+// ─── Memory limits ───
+const MAX_MESSAGES_PER_CHAT = 1000;
+const MAX_CHATS = 10000;
+const MAX_MESSAGE_TEXT_LENGTH = 50000; // 50KB text limit
+const MAX_PV_PENDING_REQUESTS = 1000;
+const SUBSCRIPTION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// ─── Rate limiter for file system access routes ───
+const fileRateLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 100, // max 100 requests per minute per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests" },
+});
 
 // ─── Browser ID → name tracking for duplicate name resolution ───
 const chatNameMaps: { [chatId: string]: { [browserId: string]: string } } = {};
@@ -190,8 +227,25 @@ app.get("*service-worker.js*", (_req, res) => {
     }
 });
 
-// ─── Serve uploaded files ───
-app.use("/files", express.static(FILES_DIR));
+// ─── Serve uploaded files (only accessible to users who know the chatId) ───
+// Files are encrypted client-side, but we still restrict enumeration
+app.get("/files/:filename", fileRateLimiter, (req, res) => {
+    const filename = req.params.filename as string;
+    // Sanitize filename - only allow alphanumeric, dash, dot, underscore (no spaces)
+    if (!/^[\w\-.]+$/.test(filename)) {
+        return res.status(400).json({ error: "Invalid filename" });
+    }
+    const filePath = path.join(FILES_DIR, filename);
+    const resolvedPath = path.resolve(filePath);
+    // Ensure resolved path is within the files directory (prevent path traversal)
+    if (!resolvedPath.startsWith(path.resolve(FILES_DIR))) {
+        return res.status(403).json({ error: "Access denied" });
+    }
+    if (!fs.existsSync(resolvedPath)) {
+        return res.status(404).json({ error: "File not found" });
+    }
+    res.sendFile(resolvedPath);
+});
 
 // ─── VAPID public key (must be before /api/:chatId) ───
 app.get("/api/vapid-public-key", (_req, res) => {
@@ -236,15 +290,27 @@ app.post(
                 return;
             }
 
-            // Validate send token for authentication
+            // Validate send token for authentication (mandatory)
             const sendToken = req.body.sendToken;
-            if (sendToken && !validateAndConsumeSendToken(req.body.browserId, sendToken)) {
+            if (!sendToken || !validateAndConsumeSendToken(req.body.browserId, sendToken)) {
                 res.status(403).json({ error: "Invalid or expired send token" });
                 return;
             }
 
             const chatId = req.params.chatId;
-            if (!chat[chatId]) chat[chatId] = [];
+            if (!chat[chatId]) {
+                if (Object.keys(chat).length >= MAX_CHATS) {
+                    res.status(429).json({ error: "Maximum chat limit reached" });
+                    return;
+                }
+                chat[chatId] = [];
+            }
+
+            // Enforce message text length limit
+            if (req.body.text && req.body.text.length > MAX_MESSAGE_TEXT_LENGTH) {
+                res.status(400).json({ error: "Message text too long" });
+                return;
+            }
 
             const displayName = resolveDisplayName(
                 chatId,
@@ -263,6 +329,11 @@ app.post(
             };
 
             chat[chatId].push(msg);
+
+            // Enforce message limit per chat (evict oldest)
+            while (chat[chatId].length > MAX_MESSAGES_PER_CHAT) {
+                chat[chatId].shift();
+            }
 
             // Broadcast via WebSocket (include chatId so clients know which chat)
             io.to(`chat:${chatId}`).emit("new_message", { ...msg, chatId });
@@ -286,21 +357,35 @@ app.post(
 );
 
 // ─── POST file message (encrypted files) ───
-app.post("/api/:chatId/upload", upload.single("file"), async (req, res) => {
+app.post("/api/:chatId/upload", fileRateLimiter, upload.single("file"), async (req, res) => {
     try {
         const chatId = req.params.chatId as string;
-        if (!chat[chatId]) chat[chatId] = [];
+        if (!chat[chatId]) {
+            if (Object.keys(chat).length >= MAX_CHATS) {
+                res.status(429).json({ error: "Maximum chat limit reached" });
+                return;
+            }
+            chat[chatId] = [];
+        }
 
         if (!req.file) {
             res.status(400).json({ error: "No file uploaded" });
             return;
         }
 
-        const browserId = req.body.browserId || "unknown";
+        const browserId = req.body.browserId;
+        if (!browserId) {
+            // Clean up uploaded file since we're rejecting the request
+            if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
+            res.status(400).json({ error: "browserId is required" });
+            return;
+        }
 
-        // Validate send token for authentication
+        // Validate send token for authentication (mandatory)
         const sendToken = req.body.sendToken;
-        if (sendToken && !validateAndConsumeSendToken(browserId, sendToken)) {
+        if (!sendToken || !validateAndConsumeSendToken(browserId, sendToken)) {
+            // Clean up uploaded file since we're rejecting the request
+            if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
             res.status(403).json({ error: "Invalid or expired send token" });
             return;
         }
@@ -329,6 +414,11 @@ app.post("/api/:chatId/upload", upload.single("file"), async (req, res) => {
 
         chat[chatId].push(msg);
 
+        // Enforce message limit per chat (evict oldest)
+        while (chat[chatId].length > MAX_MESSAGES_PER_CHAT) {
+            chat[chatId].shift();
+        }
+
         io.to(`chat:${chatId}`).emit("new_message", { ...msg, chatId });
 
         res.json({ success: true, message: msg });
@@ -355,8 +445,19 @@ webpush.setVapidDetails(
 );
 
 const subscriptions: {
-    [id: string]: { sub: webpush.PushSubscription; chatId: string; browserId?: string };
+    [id: string]: { sub: webpush.PushSubscription; chatId: string; browserId?: string; createdAt: number };
 } = {};
+
+// ─── Periodic cleanup of expired subscriptions ───
+const subscriptionCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const id of Object.keys(subscriptions)) {
+        if (now - subscriptions[id].createdAt > SUBSCRIPTION_TTL_MS) {
+            delete subscriptions[id];
+        }
+    }
+}, 60 * 60 * 1000); // Run every hour
+subscriptionCleanupInterval.unref(); // Don't prevent process exit
 
 app.post("/api/:chatId/subscribe", express.json(), (req, res) => {
     const sub = req.body.subscription as webpush.PushSubscription;
@@ -366,7 +467,7 @@ app.post("/api/:chatId/subscribe", express.json(), (req, res) => {
         return res.status(400).json({ error: "Invalid subscription" });
     }
     const id = uuidv4();
-    subscriptions[id] = { sub, chatId, browserId };
+    subscriptions[id] = { sub, chatId, browserId, createdAt: Date.now() };
     res.json({ success: true, subId: id });
 });
 
@@ -531,13 +632,15 @@ io.on("connection", (socket) => {
             // Confirm to sender that the request was delivered
             socket.emit("pv_confirmed", { toBrowserId: data.toBrowserId, chatKey: data.chatKey });
         } else {
-            // Store pending request for when user comes online
-            pvPendingRequests.push({
-                fromBrowserId: data.fromBrowserId,
-                toBrowserId: data.toBrowserId,
-                chatKey: data.chatKey,
-                senderName: data.senderName,
-            });
+            // Store pending request for when user comes online (with limit)
+            if (pvPendingRequests.length < MAX_PV_PENDING_REQUESTS) {
+                pvPendingRequests.push({
+                    fromBrowserId: data.fromBrowserId,
+                    toBrowserId: data.toBrowserId,
+                    chatKey: data.chatKey,
+                    senderName: data.senderName,
+                });
+            }
         }
     });
 
@@ -1337,6 +1440,10 @@ io.on("connection", (socket) => {
 
     socket.on("voice_join", (data: { chatId: string; browserId: string; name: string }) => {
         const { chatId, browserId, name } = data;
+        // Verify browserId matches the authenticated socket identity
+        const verifiedId = getVerifiedBrowserId(socket.id);
+        if (!verifiedId || verifiedId !== browserId) return;
+
         if (!voiceRooms[chatId]) voiceRooms[chatId] = [];
 
         // Avoid duplicates

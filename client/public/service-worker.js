@@ -57,12 +57,18 @@ self.addEventListener("push", (event) => {
     if (!event.data) return;
     const data = event.data.json();
 
+    // Validate notification URL - only allow relative paths (same-origin)
+    let notificationUrl = "/";
+    if (data.url && typeof data.url === "string" && data.url.startsWith("/")) {
+        notificationUrl = data.url;
+    }
+
     const title = data.title || "SecureChat";
     const options = {
         body: data.body,
         icon: "/pwa-192.png",
         badge: "/pwa-192.png",
-        data: data.url || "/",
+        data: notificationUrl,
         tag: "securechat-" + Date.now(),
     };
 
