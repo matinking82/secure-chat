@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import type { ChatMessage } from "../../types";
-import { decryptText, decryptFile, encryptText } from "../../lib/crypto";
+import { decryptText, encryptText } from "../../lib/crypto";
 import { getEncryptionKey, getBrowserId, DEFAULT_ENCRYPTION_KEY, setEncryptionKey, addChat as addChatStorage, getPvChatKey, generatePvChatKey, setPvChatKey } from "../../lib/storage";
-import { fetchFileWithCache } from "../../lib/fileCache";
+import { fetchFileWithCache, getDecryptedUrl, setDecryptedUrl, clearDecryptedUrlsForChat, isDecryptedUrlCached } from "../../lib/fileCache";
 import { useChat } from "../../contexts/ChatContext";
 import { useAudioPlayer } from "../../contexts/AudioPlayerContext";
 import { useUser } from "../../contexts/UserContext";
@@ -167,7 +167,7 @@ export default function MessageBubble({
     const decryptedFileUrlRef = useRef<string | null>(null);
 
     const releaseFileUrl = useCallback((url: string | null) => {
-        if (url && !isUsingSource(url)) {
+        if (url && !isUsingSource(url) && !isDecryptedUrlCached(url)) {
             URL.revokeObjectURL(url);
         }
     }, [isUsingSource]);
@@ -182,30 +182,32 @@ export default function MessageBubble({
     // ─── Decrypt file ───
     const doDecryptFile = useCallback(async () => {
         if (!msg.file) return;
+
+        // Check in-memory decrypted URL cache first (avoids blob re-creation)
+        const cached = getDecryptedUrl(chatId, msg.file);
+        if (cached) {
+            updateDecryptedFileUrl(cached);
+            return;
+        }
+
         setFileDecrypting(true);
         try {
             const key = getEncryptionKey(chatId);
-            const buffer = await fetchFileWithCache(msg.file);
+            // fetchFileWithCache handles IndexedDB caching + decryption:
+            // - If already decrypted in cache, returns instantly
+            // - If not yet decrypted, tries current key, upgrades cache on success
+            // - On network fetch, tries to decrypt before caching
+            const { data } = await fetchFileWithCache(msg.file, key, chatId);
 
-            // Determine MIME type from originalName for proper blob/download
             const mimeType = getMimeTypeFromName(msg.originalName || "");
+            const blob = new Blob([data], { type: mimeType });
+            const blobUrl = URL.createObjectURL(blob);
 
-            if (key) {
-                const dec = await decryptFile(buffer, key, chatId);
-                if (dec) {
-                    const blob = new Blob([dec], { type: mimeType });
-                    updateDecryptedFileUrl(URL.createObjectURL(blob));
-                } else {
-                    // Decryption failed, try raw
-                    const blob = new Blob([buffer], { type: mimeType });
-                    updateDecryptedFileUrl(URL.createObjectURL(blob));
-                }
-            } else {
-                const blob = new Blob([buffer], { type: mimeType });
-                updateDecryptedFileUrl(URL.createObjectURL(blob));
-            }
+            // Store blob URL in memory so future mounts skip everything
+            setDecryptedUrl(chatId, msg.file, blobUrl);
+            updateDecryptedFileUrl(blobUrl);
         } catch {
-            // File decryption failed
+            // File fetch/decryption failed
         }
         setFileDecrypting(false);
     }, [msg.file, msg.originalName, chatId, updateDecryptedFileUrl]);
@@ -256,7 +258,8 @@ export default function MessageBubble({
                         setReplyDecrypted(r.text)
                     );
                 }
-                // Re-decrypt file
+                // Invalidate cached decrypted URLs for this chat then re-decrypt
+                clearDecryptedUrlsForChat(chatId);
                 if (msg.file) {
                     doDecryptFile();
                 }
