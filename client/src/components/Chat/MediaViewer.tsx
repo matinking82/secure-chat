@@ -5,9 +5,22 @@ interface MediaViewerProps {
     src: string;
     alt?: string;
     onClose: () => void;
+    onPrev?: () => void;
+    onNext?: () => void;
+    hasPrev?: boolean;
+    hasNext?: boolean;
 }
 
-export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProps) {
+export default function MediaViewer({
+    type,
+    src,
+    alt,
+    onClose,
+    onPrev,
+    onNext,
+    hasPrev = false,
+    hasNext = false,
+}: MediaViewerProps) {
     const [scale, setScale] = useState(1);
     const [translate, setTranslate] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
@@ -17,6 +30,10 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
     const lastPinchDist = useRef<number | null>(null);
     const lastPinchScale = useRef(1);
     const animationFrame = useRef<number>(0);
+    const touchStartX = useRef(0);
+    const touchStartY = useRef(0);
+    const touchCurrentX = useRef(0);
+    const touchCurrentY = useRef(0);
 
     // ─── Reset transform ───
     const resetTransform = useCallback(() => {
@@ -28,9 +45,18 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose();
+            if (e.key === "ArrowLeft" && hasPrev) onPrev?.();
+            if (e.key === "ArrowRight" && hasNext) onNext?.();
         };
         document.addEventListener("keydown", handleKey);
         return () => document.removeEventListener("keydown", handleKey);
+    }, [onClose, onPrev, onNext, hasPrev, hasNext]);
+
+    // Allow external close requests (e.g., mobile back button interception in ChatView)
+    useEffect(() => {
+        const handleCloseRequest = () => onClose();
+        window.addEventListener("sc-close-media-viewer", handleCloseRequest as EventListener);
+        return () => window.removeEventListener("sc-close-media-viewer", handleCloseRequest as EventListener);
     }, [onClose]);
 
     // ─── Mouse wheel zoom (images only) ───
@@ -101,6 +127,13 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
         (e: React.TouchEvent) => {
             if (type !== "image") return;
 
+            if (e.touches.length === 1) {
+                touchStartX.current = e.touches[0].clientX;
+                touchStartY.current = e.touches[0].clientY;
+                touchCurrentX.current = e.touches[0].clientX;
+                touchCurrentY.current = e.touches[0].clientY;
+            }
+
             if (e.touches.length === 2) {
                 // Pinch start
                 const dist = getTouchDist(e.touches);
@@ -140,6 +173,9 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
                     };
                     setTranslate((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
                 });
+            } else if (e.touches.length === 1) {
+                touchCurrentX.current = e.touches[0].clientX;
+                touchCurrentY.current = e.touches[0].clientY;
             }
         },
         [type, isDragging, scale]
@@ -151,6 +187,18 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
                 lastPinchDist.current = null;
             }
             if (e.touches.length === 0) {
+                const dx = touchStartX.current - touchCurrentX.current;
+                const dy = Math.abs(touchStartY.current - touchCurrentY.current);
+                if (scale <= 1.05 && Math.abs(dx) > 60 && dy < 80) {
+                    if (dx > 0 && hasNext) {
+                        onNext?.();
+                        return;
+                    }
+                    if (dx < 0 && hasPrev) {
+                        onPrev?.();
+                        return;
+                    }
+                }
                 setIsDragging(false);
                 // Snap back if scale is too low
                 if (scale < 1) {
@@ -158,7 +206,7 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
                 }
             }
         },
-        [scale, resetTransform]
+        [scale, resetTransform, hasPrev, hasNext, onPrev, onNext]
     );
 
     // ─── Backdrop click to close ───
@@ -174,7 +222,7 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
 
     return (
         <div
-            className="fixed inset-0 z-[300] bg-black/90 flex items-center justify-center"
+            className="sc-media-viewer fixed inset-0 z-[300] bg-black/90 flex items-center justify-center"
             onClick={handleBackdropClick}
         >
             {/* Top bar */}
@@ -207,6 +255,35 @@ export default function MediaViewer({ type, src, alt, onClose }: MediaViewerProp
                     </button>
                 </div>
             </div>
+
+            {hasPrev && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPrev?.();
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 text-white flex items-center justify-center"
+                    title="Previous media"
+                >
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+            )}
+            {hasNext && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onNext?.();
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/45 hover:bg-black/60 text-white flex items-center justify-center"
+                    title="Next media"
+                >
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            )}
 
             {/* Media content */}
             <div

@@ -4,6 +4,8 @@ interface ChatListContextMenuProps {
     chatId: string;
     onOpen: () => void;
     onSettings: () => void;
+    onPin: () => void;
+    isPinned?: boolean;
     onDelete: () => void;
     onClose: () => void;
     position: { x: number; y: number };
@@ -12,6 +14,8 @@ interface ChatListContextMenuProps {
 export default function ChatListContextMenu({
     onOpen,
     onSettings,
+    onPin,
+    isPinned = false,
     onDelete,
     onClose,
     position,
@@ -81,6 +85,18 @@ export default function ChatListContextMenu({
                             d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                     Settings
+                </button>
+
+                {/* Pin/Unpin */}
+                <button
+                    onClick={onPin}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition text-left"
+                >
+                    <svg className="w-[18px] h-[18px] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M16 3l5 5-4.5 1.5L13 13v6l-2-2-2 2v-6L5.5 9.5 1 8l5-5" />
+                    </svg>
+                    {isPinned ? "Unpin Chat" : "Pin Chat"}
                 </button>
 
                 {/* Divider */}

@@ -1,16 +1,22 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useChat } from "../../contexts/ChatContext";
 import { useAudioPlayer } from "../../contexts/AudioPlayerContext";
+import { readAudioMetadata } from "../../lib/audioMetadata";
+import { upsertChatAudioIndex } from "../../lib/audioIndex";
+
+const FALLBACK_CREATED_AT = "1970-01-01T00:00:00.000Z";
 
 interface AudioPlayerProps {
     src: string;
+    encryptedFileUrl?: string;
     chatId: string;
     trackId?: number;
     name?: string;
     isVoice?: boolean;
+    createdAt?: string;
 }
 
-export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: AudioPlayerProps) {
+export default function AudioPlayer({ src, encryptedFileUrl, chatId, trackId, name, isVoice, createdAt }: AudioPlayerProps) {
     const { chats } = useChat();
     const {
         playing,
@@ -24,14 +30,19 @@ export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: Aud
     } = useAudioPlayer();
     const audioRef = useRef<HTMLAudioElement>(null);
     const [localDuration, setLocalDuration] = useState(0);
+    const [metaTitle, setMetaTitle] = useState("");
+    const [artist, setArtist] = useState("");
+    const [album, setAlbum] = useState("");
     const progressRef = useRef<HTMLDivElement>(null);
     const chatLabel = chats.find((chat) => chat.chatId === chatId)?.label || chatId;
     const trackKey = `${chatId}:${trackId ?? src}:${isVoice ? "voice" : "audio"}`;
+    const sourceFileUrl = encryptedFileUrl || src;
     const isActiveTrack = isCurrentTrack(trackKey);
     const displayedCurrentTime = isActiveTrack ? currentTime : 0;
     const displayedDuration = isActiveTrack ? duration : localDuration;
     const isPlaying = isActiveTrack ? playing : false;
     const title = name || (isVoice ? "Voice message" : "Audio file");
+    const resolvedTitle = metaTitle || title;
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -45,6 +56,49 @@ export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: Aud
         };
     }, [src]);
 
+    useEffect(() => {
+        let mounted = true;
+        readAudioMetadata(src).then((meta) => {
+            if (!mounted || !meta) return;
+            setMetaTitle(meta.title || "");
+            setArtist(meta.artist || "");
+            setAlbum(meta.album || "");
+            upsertChatAudioIndex(chatId, [{
+                trackKey,
+                fileUrl: sourceFileUrl,
+                encryptedFileUrl,
+                title: meta.title || title,
+                chatId,
+                chatLabel,
+                isVoice,
+                createdAt: createdAt || FALLBACK_CREATED_AT,
+                artist: meta.artist || undefined,
+                album: meta.album || undefined,
+            }]);
+        });
+        return () => {
+            mounted = false;
+        };
+    }, [src, sourceFileUrl, encryptedFileUrl, chatId, trackKey, title, chatLabel, isVoice, createdAt]);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio || !localDuration) return;
+        upsertChatAudioIndex(chatId, [{
+            trackKey,
+            fileUrl: sourceFileUrl,
+            encryptedFileUrl,
+            title: resolvedTitle,
+            chatId,
+            chatLabel,
+            isVoice,
+            createdAt: createdAt || FALLBACK_CREATED_AT,
+            artist: artist || undefined,
+            album: album || undefined,
+            durationSec: localDuration,
+        }]);
+    }, [localDuration, chatId, trackKey, src, sourceFileUrl, encryptedFileUrl, resolvedTitle, chatLabel, isVoice, artist, album, createdAt]);
+
     const toggle = () => {
         if (isActiveTrack) {
             void togglePlayback();
@@ -52,10 +106,14 @@ export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: Aud
             void playTrack({
                 trackKey,
                 previewSrc: src,
-                title,
+                title: resolvedTitle,
                 chatId,
                 chatLabel,
                 isVoice,
+                fileUrl: sourceFileUrl,
+                artist: artist || undefined,
+                album: album || undefined,
+                durationSec: displayedDuration || undefined,
             });
         }
     };
@@ -75,11 +133,15 @@ export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: Aud
             void playTrack({
                 trackKey,
                 previewSrc: src,
-                title,
+                title: resolvedTitle,
                 chatId,
                 chatLabel,
                 isVoice,
                 startTime: targetTime,
+                fileUrl: sourceFileUrl,
+                artist: artist || undefined,
+                album: album || undefined,
+                durationSec: displayedDuration || undefined,
             });
         }
     };
@@ -103,7 +165,7 @@ export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: Aud
     }, [isVoice]);
 
     return (
-        <div className={`flex items-center gap-2.5 ${isVoice ? "min-w-[200px] max-w-[280px]" : "min-w-[220px] max-w-[300px]"}`}>
+        <div className="flex items-center gap-2.5 w-[280px] sm:w-[320px]">
             <audio ref={audioRef} src={src} preload="metadata" />
 
             {/* Play/Pause button */}
@@ -151,7 +213,12 @@ export default function AudioPlayer({ src, chatId, trackId, name, isVoice }: Aud
                 ) : (
                     <div>
                         {title && (
-                            <div className="text-xs text-white truncate mb-1">{title}</div>
+                            <div className="text-xs text-white truncate mb-1">{resolvedTitle}</div>
+                        )}
+                        {artist && (
+                            <div className="text-[10px] text-gray-400 truncate mb-1">
+                                {artist}{album ? ` • ${album}` : ""}
+                            </div>
                         )}
                         <div
                             ref={progressRef}

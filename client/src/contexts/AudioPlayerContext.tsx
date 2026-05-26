@@ -7,28 +7,15 @@ import {
     useState,
     type ReactNode,
 } from "react";
-
-export interface SharedAudioTrack {
-    trackKey: string;
-    src: string;
-    title: string;
-    chatId: string;
-    chatLabel?: string;
-    isVoice?: boolean;
-}
-
-interface PlaySharedAudioInput {
-    trackKey: string;
-    previewSrc: string;
-    title: string;
-    chatId: string;
-    chatLabel?: string;
-    isVoice?: boolean;
-    startTime?: number;
-}
+import { getChatAudioIndex } from "../lib/audioIndex";
+import { fetchFileWithCache, getDecryptedUrl, setDecryptedUrl } from "../lib/fileCache";
+import { getEncryptionKey } from "../lib/storage";
+import type { SharedAudioTrack, PlaySharedAudioInput } from "./audioPlayerTypes";
 
 interface AudioPlayerContextType {
     currentTrack: SharedAudioTrack | null;
+    playlist: SharedAudioTrack[];
+    currentPlaylistIndex: number;
     playing: boolean;
     loading: boolean;
     currentTime: number;
@@ -40,6 +27,8 @@ interface AudioPlayerContextType {
     resume: () => Promise<void>;
     togglePlayback: () => Promise<void>;
     seek: (time: number) => void;
+    playNext: () => Promise<void>;
+    playPrev: () => Promise<void>;
     closeTrack: () => void;
     openDetails: () => void;
     closeDetails: () => void;
@@ -74,7 +63,20 @@ function waitForAudioMetadata(audio: HTMLAudioElement): Promise<void> {
 }
 
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
+    const toPlayInput = (track: SharedAudioTrack): PlaySharedAudioInput => ({
+        trackKey: track.trackKey,
+        previewSrc: track.src,
+        title: track.title,
+        chatId: track.chatId,
+        chatLabel: track.chatLabel,
+        isVoice: track.isVoice,
+        fileUrl: track.fileUrl,
+        createdAt: track.createdAt,
+        artist: track.artist,
+        album: track.album,
+    });
     const [currentTrack, setCurrentTrack] = useState<SharedAudioTrack | null>(null);
+    const [playlist, setPlaylist] = useState<SharedAudioTrack[]>([]);
     const [playing, setPlaying] = useState(false);
     const [loading, setLoading] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -83,9 +85,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const currentTrackRef = useRef<SharedAudioTrack | null>(null);
+    const playlistRef = useRef<SharedAudioTrack[]>([]);
+    const playTrackRef = useRef<((input: PlaySharedAudioInput) => Promise<void>) | null>(null);
     const ownedSrcRef = useRef<string | null>(null);
     const requestIdRef = useRef(0);
-
+    const currentChatIdRef = useRef<string | null>(null);
     const revokeOwnedSource = useCallback(() => {
         if (ownedSrcRef.current) {
             URL.revokeObjectURL(ownedSrcRef.current);
@@ -110,7 +114,57 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setDuration(0);
         setError(null);
         setDetailsOpen(false);
+        setPlaylist([]);
+        currentChatIdRef.current = null;
     }, [revokeOwnedSource]);
+
+    const refreshPlaylistForChat = useCallback((chatId: string) => {
+        const indexed = getChatAudioIndex(chatId);
+        const active = currentTrackRef.current;
+        const candidateMap = new Map<string, SharedAudioTrack>();
+        for (const item of indexed) {
+            const indexedFileUrl = item.encryptedFileUrl || item.fileUrl;
+            candidateMap.set(item.trackKey, {
+                trackKey: item.trackKey,
+                src: indexedFileUrl,
+                fileUrl: indexedFileUrl,
+                title: item.title,
+                chatId: item.chatId,
+                chatLabel: item.chatLabel || active?.chatLabel,
+                isVoice: item.isVoice,
+                createdAt: item.createdAt,
+                artist: item.artist,
+                album: item.album,
+                durationSec: item.durationSec,
+            });
+        }
+        if (active && active.chatId === chatId) {
+            const indexedActive = candidateMap.get(active.trackKey);
+            candidateMap.set(active.trackKey, {
+                ...indexedActive,
+                ...active,
+                title: active.title || indexedActive?.title || active.fileUrl || "Audio file",
+                artist: active.artist || indexedActive?.artist,
+                album: active.album || indexedActive?.album,
+                durationSec: active.durationSec || indexedActive?.durationSec,
+            });
+        }
+        const bySource = new Map<string, SharedAudioTrack>();
+        for (const track of candidateMap.values()) {
+            const dedupeKey = JSON.stringify([track.fileUrl || track.src, !!track.isVoice]);
+            const existing = bySource.get(dedupeKey);
+            const isActive = active?.trackKey === track.trackKey;
+            if (!existing || isActive) {
+                bySource.set(dedupeKey, track);
+            }
+        }
+        const nextPlaylist = Array.from(bySource.values()).filter((track) => !track.isVoice).sort((a, b) => {
+            const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return at - bt;
+        });
+        setPlaylist(nextPlaylist);
+    }, []);
 
     useEffect(() => {
         const audio = new Audio();
@@ -127,6 +181,18 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         const handlePlay = () => setPlaying(true);
         const handlePause = () => setPlaying(false);
         const handleEnded = () => {
+            const active = currentTrackRef.current;
+            if (active) {
+                const currentPlaylist = playlistRef.current;
+                const index = currentPlaylist.findIndex((t) => t.trackKey === active.trackKey);
+                if (index >= 0 && index < currentPlaylist.length - 1) {
+                    const next = currentPlaylist[index + 1];
+                    if (playTrackRef.current) {
+                        void playTrackRef.current(toPlayInput(next));
+                    }
+                    return;
+                }
+            }
             closeTrack();
         };
         const handleError = () => {
@@ -153,6 +219,17 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
             revokeOwnedSource();
         };
     }, [closeTrack, revokeOwnedSource]);
+
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ chatId?: string }>).detail;
+            const chatId = detail?.chatId;
+            if (!chatId || chatId !== currentChatIdRef.current) return;
+            refreshPlaylistForChat(chatId);
+        };
+        window.addEventListener("sc-audio-index-updated", handler as EventListener);
+        return () => window.removeEventListener("sc-audio-index-updated", handler as EventListener);
+    }, [refreshPlaylistForChat]);
 
     const clonePreviewSource = useCallback(async (requestId: number, trackKey: string, previewSrc: string) => {
         try {
@@ -205,6 +282,20 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         }
     }, [revokeOwnedSource]);
 
+    const resolveTrackSrc = useCallback(async (track: PlaySharedAudioInput): Promise<string> => {
+        const preferred = track.previewSrc;
+        if (preferred.startsWith("blob:")) return preferred;
+        const fileUrl = track.fileUrl || preferred;
+        const cached = getDecryptedUrl(track.chatId, fileUrl);
+        if (cached) return cached;
+        const key = getEncryptionKey(track.chatId);
+        const { data } = await fetchFileWithCache(fileUrl, key, track.chatId);
+        const blob = new Blob([data], { type: track.isVoice ? "audio/ogg" : "audio/mpeg" });
+        const blobUrl = URL.createObjectURL(blob);
+        setDecryptedUrl(track.chatId, fileUrl, blobUrl);
+        return blobUrl;
+    }, []);
+
     const playTrack = useCallback(async (input: PlaySharedAudioInput) => {
         const audio = audioRef.current;
         if (!audio) return;
@@ -212,7 +303,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         const activeTrack = currentTrackRef.current;
         if (activeTrack?.trackKey === input.trackKey) {
             if (typeof input.startTime === "number") {
-                audio.currentTime = Math.max(0, Math.min(input.startTime, duration || input.startTime));
+                audio.currentTime = Math.max(0, Math.min(input.startTime, audio.duration || input.startTime));
                 setCurrentTime(audio.currentTime || 0);
             }
             try {
@@ -238,9 +329,16 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
             chatId: input.chatId,
             chatLabel: input.chatLabel,
             isVoice: input.isVoice,
+            fileUrl: input.fileUrl,
+            createdAt: input.createdAt,
+            artist: input.artist,
+            album: input.album,
+            durationSec: input.durationSec,
         };
         currentTrackRef.current = nextTrack;
         setCurrentTrack(nextTrack);
+        currentChatIdRef.current = input.chatId;
+        refreshPlaylistForChat(input.chatId);
         setLoading(true);
         setPlaying(false);
         setCurrentTime(0);
@@ -248,7 +346,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setError(null);
 
         try {
-            audio.src = input.previewSrc;
+            const resolvedSrc = await resolveTrackSrc(input);
+            audio.src = resolvedSrc;
             audio.load();
             await waitForAudioMetadata(audio);
 
@@ -260,19 +359,33 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
                 audio.currentTime = Math.max(0, Math.min(input.startTime, audio.duration || input.startTime));
             }
 
+            currentTrackRef.current = {
+                ...nextTrack,
+                src: resolvedSrc,
+                durationSec: audio.duration || nextTrack.durationSec,
+            };
+            setCurrentTrack(currentTrackRef.current);
             setDuration(audio.duration || 0);
             setCurrentTime(audio.currentTime || 0);
             await audio.play();
             setLoading(false);
 
-            void clonePreviewSource(requestId, input.trackKey, input.previewSrc);
+            void clonePreviewSource(requestId, input.trackKey, resolvedSrc);
         } catch {
             if (requestId !== requestIdRef.current) return;
             setLoading(false);
             setPlaying(false);
             setError("Unable to play this audio file.");
         }
-    }, [clonePreviewSource, duration, revokeOwnedSource]);
+    }, [clonePreviewSource, refreshPlaylistForChat, resolveTrackSrc, revokeOwnedSource]);
+
+    useEffect(() => {
+        playlistRef.current = playlist;
+    }, [playlist]);
+
+    useEffect(() => {
+        playTrackRef.current = playTrack;
+    }, [playTrack]);
 
     const pause = useCallback(() => {
         audioRef.current?.pause();
@@ -305,6 +418,26 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setCurrentTime(audio.currentTime || 0);
     }, []);
 
+    const playNext = useCallback(async () => {
+        if (!currentTrackRef.current) return;
+        const index = playlist.findIndex((t) => t.trackKey === currentTrackRef.current?.trackKey);
+        if (index < 0 || index >= playlist.length - 1) return;
+        const next = playlist[index + 1];
+        await playTrack(toPlayInput(next));
+    }, [playTrack, playlist]);
+
+    const playPrev = useCallback(async () => {
+        if (!currentTrackRef.current) return;
+        const index = playlist.findIndex((t) => t.trackKey === currentTrackRef.current?.trackKey);
+        if (index <= 0) return;
+        const prev = playlist[index - 1];
+        await playTrack(toPlayInput(prev));
+    }, [playTrack, playlist]);
+
+    const currentPlaylistIndex = currentTrack
+        ? playlist.findIndex((t) => t.trackKey === currentTrack.trackKey)
+        : -1;
+
     const openDetails = useCallback(() => setDetailsOpen(true), []);
     const closeDetails = useCallback(() => setDetailsOpen(false), []);
     const isCurrentTrack = useCallback((trackKey: string) => currentTrackRef.current?.trackKey === trackKey, []);
@@ -314,6 +447,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         <AudioPlayerContext.Provider
             value={{
                 currentTrack,
+                playlist,
+                currentPlaylistIndex,
                 playing,
                 loading,
                 currentTime,
@@ -325,6 +460,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
                 resume,
                 togglePlayback,
                 seek,
+                playNext,
+                playPrev,
                 closeTrack,
                 openDetails,
                 closeDetails,

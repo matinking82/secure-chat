@@ -28,8 +28,8 @@ SecureChat includes the following chat games:
 9. ChaarBarg  
 
 ## Screenshots
-<!-- 
-> You can replace or add more screenshots over time as the UI evolves. -->
+
+> You can replace or add more screenshots over time as the UI evolves.
 
 ### Welcome screen
 
@@ -65,9 +65,16 @@ Create a `.env` file in the project root:
 
 ```env
 PORT=4040
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=your_mysql_user
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=securechat
 VAPID_SUBJECT=mailto:you@example.com
 VAPID_PUBLIC_KEY=your_public_key
 VAPID_PRIVATE_KEY=your_private_key
+ADMIN_USERNAME=admin_user
+ADMIN_PASSWORD=admin_pass
 ```
 
 ### 3) Start the app
@@ -99,7 +106,7 @@ Then open the frontend URL shown by Vite (default: `http://localhost:5173`).
    ```bash
    npm run build:client
    ```
-3. Set environment variables (`PORT`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`).
+3. Set environment variables (`PORT`, `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`).
 4. Start server:
    ```bash
    npm run start

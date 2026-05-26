@@ -1,0 +1,15 @@
+<svg viewBox="0 0 200 200" width="300" height="300" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    /* Reuse same styles as above */
+    .die { transform-origin: 100px 100px; animation: rollDie 1.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+    .shadow { transform-origin: 100px 175px; animation: shadowShrink 1.8s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+    @keyframes rollDie { 0% { transform: translate(0, -150px) rotate(0deg) scale(0.5); opacity: 0; } 5% { opacity: 1; } 40% { transform: translate(0, 0px) rotate(360deg) scale(1.1); } 60% { transform: translate(0, -60px) rotate(540deg) scale(1); } 80% { transform: translate(0, 0px) rotate(720deg) scale(1.02); } 90% { transform: translate(0, -15px) rotate(720deg) scale(1); } 100% { transform: translate(0, 0px) rotate(720deg) scale(1); } }
+    @keyframes shadowShrink { 0% { transform: scale(0.2); opacity: 0; } 5% { opacity: 0.1; } 40% { transform: scale(1.1); opacity: 0.3; } 60% { transform: scale(0.6); opacity: 0.1; } 80% { transform: scale(1.02); opacity: 0.3; } 90% { transform: scale(0.9); opacity: 0.2; } 100% { transform: scale(1); opacity: 0.3; } }
+  </style>
+  <ellipse cx="100" cy="175" rx="55" ry="12" fill="#000" class="shadow" />
+  <g class="die">
+    <rect x="40" y="40" width="120" height="120" rx="20" ry="20" fill="#e74c3c" stroke="#c0392b" stroke-width="4" />
+    <circle cx="65" cy="65" r="12" fill="#fff" />
+    <circle cx="135" cy="135" r="12" fill="#fff" />
+  </g>
+</svg>

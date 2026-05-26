@@ -1,6 +1,7 @@
 import { useRef, useCallback } from "react";
 import type { SavedChat } from "../../types";
 import { renderTextWithEmoji } from "../../lib/emojiService";
+import { formatMessageTime } from "../../lib/dateFormatter";
 
 // Consistent color palette for chat avatars
 const CHAT_COLORS = [
@@ -27,12 +28,7 @@ interface ChatListItemProps {
 
 export default function ChatListItem({ chat, isActive, onClick, onContextMenu }: ChatListItemProps) {
     const initial = (chat.label || chat.chatId).charAt(0).toUpperCase();
-    const timeStr = chat.lastMessageTime
-        ? new Date(chat.lastMessageTime).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-          })
-        : "";
+    const timeStr = chat.lastMessageTime ? formatMessageTime(chat.lastMessageTime) : "";
 
     // Long-press for mobile
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,6 +93,9 @@ export default function ChatListItem({ chat, isActive, onClick, onContextMenu }:
                     <span className="font-medium text-white text-[15px] truncate">
                         {chat.label || chat.chatId}
                     </span>
+                    {chat.pinned && (
+                        <span className="text-[#4ea4f6] text-xs ml-1" title="Pinned">📌</span>
+                    )}
                     {timeStr && (
                         <span className="text-xs text-gray-400 shrink-0 ml-2">
                             {timeStr}

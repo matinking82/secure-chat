@@ -527,7 +527,7 @@ export default function SettingsView() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                         <div className="rounded-xl border border-[#2b5278]/30 bg-[#0e1621] p-4 space-y-3">
                             <div className="flex items-center justify-between gap-4">
                                 <label className="text-white text-sm font-medium">Wallpaper dim</label>
@@ -542,22 +542,6 @@ export default function SettingsView() {
                                 className="w-full accent-[#4ea4f6]"
                             />
                             <div className="text-xs text-gray-500">Darkens bright wallpapers so messages stay readable.</div>
-                        </div>
-
-                        <div className="rounded-xl border border-[#2b5278]/30 bg-[#0e1621] p-4 space-y-3">
-                            <div className="flex items-center justify-between gap-4">
-                                <label className="text-white text-sm font-medium">Wallpaper blur</label>
-                                <span className="text-xs text-gray-400">{appearance.backgroundBlur}px</span>
-                            </div>
-                            <input
-                                type="range"
-                                min={0}
-                                max={24}
-                                value={appearance.backgroundBlur}
-                                onChange={(e) => updateAppearance({ backgroundBlur: Number(e.target.value) })}
-                                className="w-full accent-[#4ea4f6]"
-                            />
-                            <div className="text-xs text-gray-500">Useful for busy photos from your gallery.</div>
                         </div>
                     </div>
 

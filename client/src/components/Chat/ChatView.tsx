@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import type { ChatMessage } from "../../types";
+import type { ChatMessage, ForwardMessagePayload } from "../../types";
 import { useChat } from "../../contexts/ChatContext";
 import { useUser } from "../../contexts/UserContext";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
@@ -11,8 +11,13 @@ import EncryptionKeyModal from "./EncryptionKeyModal";
 import ShareModal from "./ShareModal";
 import VoiceCallOverlay, { VoiceCallBanner } from "./VoiceCallOverlay";
 import VideoCallOverlay from "./VideoCallOverlay";
-import { getEncryptionKey } from "../../lib/storage";
-import { decryptText } from "../../lib/crypto";
+import ForwardModal from "./ForwardModal";
+import { MIN_CHAT_KEY_LENGTH } from "../../lib/chatKey";
+import { getPendingMessages, removePendingMessage } from "../../lib/pendingMessages";
+import { getSavedChats } from "../../lib/storage";
+
+const PENDING_FORWARD_STORAGE_KEY = "sc_pending_forward";
+const WEAK_CHAT_KEY_WARNING_PREFIX = "sc_weak_chat_key_warned_";
 
 // Consistent color palette for chat avatars
 const CHAT_COLORS = [
@@ -30,27 +35,66 @@ function getChatColor(chatId: string): string {
     return CHAT_COLORS[Math.abs(hash) % CHAT_COLORS.length];
 }
 
+function isSameEncryptedPayload(localMessage: ChatMessage, incoming: { browserId?: string; text?: string }): boolean {
+    if (!incoming.browserId || typeof incoming.text !== "string") return false;
+    return (
+        localMessage.browserId === incoming.browserId
+        && typeof localMessage.rawText === "string"
+        && localMessage.rawText === incoming.text
+    );
+}
+
 export default function ChatView() {
     const { chatId } = useParams<{ chatId: string }>();
     const navigate = useNavigate();
-    const { chats, addChat, setActiveChatId, clearUnread, onMessage, onMessageEdited, onMessageReaction, onMessageSeenUpdate, onMessageDeleted, socket } = useChat();
+    const { chats, setActiveChatId, clearUnread, updateChat, onMessage, onMessageEdited, onMessageReaction, onMessageSeenUpdate, onMessageDeleted, socket } = useChat();
     const { settings } = useUser();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
     const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
     const [typingUsers, setTypingUsers] = useState<string[]>([]);
+    const [isDraggingFiles, setIsDraggingFiles] = useState(false);
     const [showKeyModal, setShowKeyModal] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
+    const [showForwardModal, setShowForwardModal] = useState(false);
+    const [forwardingMessages, setForwardingMessages] = useState<ForwardMessagePayload[]>([]);
     const chatContainerRef = useRef<HTMLDivElement>(null);
+    const typingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
     const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<{
+        index: number;
+        total: number;
+        fileName: string;
+        loaded: number;
+        fileSize: number;
+        totalLoaded: number;
+        totalSize: number;
+    } | null>(null);
+    const [showWeakKeyWarning, setShowWeakKeyWarning] = useState(false);
+    const [retryMessage, setRetryMessage] = useState<ChatMessage | null>(null);
+    const [lastOpenedBeforeSession, setLastOpenedBeforeSession] = useState<string | undefined>(undefined);
+    const canPersistLastOpenedAtRef = useRef(false);
 
     // Swipe-right to go back (mobile)
     const touchStartXRef = useRef(0);
     const touchStartYRef = useRef(0);
 
-    const isMobile = useMemo(() =>
+    const [isMobile, setIsMobile] = useState(() =>
         /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-        ('ontouchstart' in window && window.innerWidth < 768), []);
+        ('ontouchstart' in window && window.innerWidth < 1024)
+    );
+
+    useEffect(() => {
+        const detectMobile = () => {
+            setIsMobile(
+                /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                ('ontouchstart' in window && window.innerWidth < 1024)
+            );
+        };
+
+        window.addEventListener('resize', detectMobile);
+        return () => window.removeEventListener('resize', detectMobile);
+    }, []);
 
     // Handle mobile virtual keyboard: adjust container height to match visual viewport
     useEffect(() => {
@@ -109,10 +153,13 @@ export default function ChatView() {
         // Push a fake history entry so we can intercept back
         window.history.pushState({ chatView: true }, "");
 
-        const handlePopState = (e: PopStateEvent) => {
+        const handlePopState = () => {
             if (emojiPickerOpen) {
                 // Close emoji panel instead of navigating
                 setEmojiPickerOpen(false);
+                window.history.pushState({ chatView: true }, "");
+            } else if (document.querySelector(".sc-media-viewer")) {
+                window.dispatchEvent(new Event("sc-close-media-viewer"));
                 window.history.pushState({ chatView: true }, "");
             } else {
                 // Navigate to chat list
@@ -160,14 +207,35 @@ export default function ChatView() {
     // On mount: add chat to sidebar, set active, clear unread
     useEffect(() => {
         if (!chatId) return;
-        addChat(chatId);
+        canPersistLastOpenedAtRef.current = false;
+        // In React StrictMode (dev), mount effects run twice with an immediate cleanup in-between.
+        // Arm persistence on the next macrotask so that synthetic cleanup does not overwrite lastOpenedAt.
+        const armPersistTimer = window.setTimeout(() => {
+            canPersistLastOpenedAtRef.current = true;
+        }, 0);
+        const entryAtOpen = getSavedChats().find((c) => c.chatId === chatId);
+        setLastOpenedBeforeSession(entryAtOpen?.lastOpenedAt);
         setActiveChatId(chatId);
         clearUnread(chatId);
+        setMessages(getPendingMessages(chatId));
 
         return () => {
+            window.clearTimeout(armPersistTimer);
+            if (canPersistLastOpenedAtRef.current) {
+                updateChat(chatId, { lastOpenedAt: new Date().toISOString() });
+            }
             setActiveChatId(null);
         };
-    }, [chatId, addChat, setActiveChatId, clearUnread]);
+    }, [chatId, setActiveChatId, clearUnread, updateChat]);
+
+    useEffect(() => {
+        if (!chatId) return;
+        if (chatId.length >= MIN_CHAT_KEY_LENGTH) return;
+        const warnedKey = `${WEAK_CHAT_KEY_WARNING_PREFIX}${chatId}`;
+        if (localStorage.getItem(warnedKey)) return;
+        localStorage.setItem(warnedKey, "1");
+        setShowWeakKeyWarning(true);
+    }, [chatId]);
 
     // Listen for new messages via WebSocket
     useEffect(() => {
@@ -177,6 +245,21 @@ export default function ChatView() {
             if (msg.chatId === chatId) {
                 setMessages((prev) => {
                     if (prev.some((m) => m.id === msg.id)) return prev;
+                    const pendingIndex = prev.findIndex((m) => (
+                        m.localOnly
+                        && isSameEncryptedPayload(m, { browserId: msg.browserId, text: msg.text })
+                    ));
+                    if (pendingIndex >= 0) {
+                        const next = [...prev];
+                        const pending = next[pendingIndex];
+                        removePendingMessage(chatId, pending.id);
+                        next[pendingIndex] = {
+                            ...msg,
+                            text: pending.text ?? msg.text,
+                            rawText: msg.text,
+                        };
+                        return next;
+                    }
                     return [...prev, msg];
                 });
             }
@@ -193,7 +276,12 @@ export default function ChatView() {
                 setMessages((prev) =>
                     prev.map((m) =>
                         m.id === data.messageId
-                            ? { ...m, text: data.text, edited: true }
+                            ? {
+                                ...m,
+                                text: data.text,
+                                rawText: data.text.startsWith("ENC::") ? data.text : undefined,
+                                edited: true,
+                            }
                             : m
                     )
                 );
@@ -252,24 +340,46 @@ export default function ChatView() {
 
         const handleTyping = (data: { chatId: string; name: string; isTyping: boolean }) => {
             if (data.chatId !== chatId) return;
+
+            const existingTimeout = typingTimeoutsRef.current.get(data.name);
+            if (existingTimeout) {
+                clearTimeout(existingTimeout);
+                typingTimeoutsRef.current.delete(data.name);
+            }
+
             setTypingUsers((prev) => {
                 if (data.isTyping) {
                     return prev.includes(data.name) ? prev : [...prev, data.name];
                 }
                 return prev.filter((n) => n !== data.name);
             });
+
+            if (data.isTyping) {
+                const timeout = setTimeout(() => {
+                    setTypingUsers((prev) => prev.filter((n) => n !== data.name));
+                    typingTimeoutsRef.current.delete(data.name);
+                }, 4000);
+                typingTimeoutsRef.current.set(data.name, timeout);
+            }
         };
 
         socket.on("user_typing", handleTyping);
 
         return () => {
             socket.off("user_typing", handleTyping);
+            typingTimeoutsRef.current.forEach((t) => clearTimeout(t));
+            typingTimeoutsRef.current.clear();
             setTypingUsers([]);
         };
     }, [chatId, socket]);
 
     // Handle delete message
     const handleDeleteMessage = (msg: ChatMessage) => {
+        if (msg.localOnly) {
+            removePendingMessage(chatId, msg.id);
+            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            return;
+        }
         socket?.emit("delete_message", {
             chatId,
             messageId: msg.id,
@@ -277,7 +387,135 @@ export default function ChatView() {
         });
     };
 
+    const handleChatDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+        }
+    };
+
+    const handleChatDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setIsDraggingFiles(true);
+    };
+
+    const handleChatDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        const related = e.relatedTarget as Node | null;
+        if (!related || !e.currentTarget.contains(related)) {
+            setIsDraggingFiles(false);
+        }
+    };
+
+    const handleChatDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setIsDraggingFiles(false);
+        const droppedFiles = Array.from(e.dataTransfer.files || []);
+        if (droppedFiles.length === 0) return;
+        window.dispatchEvent(new CustomEvent("sc-chat-files-drop", { detail: droppedFiles }));
+    };
+
+    const handleForwardSelected = (selectedMessages: ForwardMessagePayload[]) => {
+        if (selectedMessages.length === 0) return;
+        setForwardingMessages(selectedMessages);
+        setShowForwardModal(true);
+    };
+
+    const handleForwardToChat = (targetChatId: string) => {
+        if (forwardingMessages.length === 0) return;
+        sessionStorage.setItem(
+            PENDING_FORWARD_STORAGE_KEY,
+            JSON.stringify({ targetChatId, messages: forwardingMessages })
+        );
+        setShowForwardModal(false);
+        setForwardingMessages([]);
+        navigate(`/chat/${targetChatId}`);
+    };
+
+    useEffect(() => {
+        if (!chatId) return;
+        const raw = sessionStorage.getItem(PENDING_FORWARD_STORAGE_KEY);
+        if (!raw) return;
+        try {
+            const parsed = JSON.parse(raw) as { targetChatId?: string; messages?: ForwardMessagePayload[] };
+            if (parsed.targetChatId === chatId && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+                setForwardingMessages(parsed.messages);
+            }
+        } catch {
+            // ignore malformed payload
+        } finally {
+            sessionStorage.removeItem(PENDING_FORWARD_STORAGE_KEY);
+        }
+    }, [chatId]);
+
+    useEffect(() => {
+        if (!chatId) return;
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{
+                chatId?: string;
+                progress?: {
+                    index: number;
+                    total: number;
+                    fileName: string;
+                    loaded: number;
+                    fileSize: number;
+                    totalLoaded: number;
+                    totalSize: number;
+                } | null;
+            }>).detail;
+            if (!detail || detail.chatId !== chatId) return;
+            setUploadProgress(detail.progress ?? null);
+        };
+        window.addEventListener("sc-chat-upload-progress", handler as EventListener);
+        return () => window.removeEventListener("sc-chat-upload-progress", handler as EventListener);
+    }, [chatId]);
+
+    const formatMb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
+    const uploadPercent = uploadProgress && uploadProgress.totalSize > 0
+        ? Math.min(100, Math.round((uploadProgress.totalLoaded / uploadProgress.totalSize) * 100))
+        : 0;
+
     if (!chatId) return null;
+
+    const handleOptimisticMessageAdd = (msg: ChatMessage) => {
+        setMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+        });
+    };
+
+    const handleOptimisticMessageStatusChange = (
+        messageId: number,
+        status: "pending" | "failed" | "sent",
+        serverMessage?: ChatMessage
+    ) => {
+        setMessages((prev) => {
+            const target = prev.find((m) => m.id === messageId);
+            if (!target) return prev;
+            if (status === "sent" && serverMessage) {
+                return prev.flatMap((m) => {
+                    if (m.id === messageId) {
+                        return [{
+                            ...serverMessage,
+                            text: target.text,
+                            rawText: serverMessage.text,
+                        }];
+                    }
+                    if (
+                        m.id !== serverMessage.id
+                        && isSameEncryptedPayload(m, { browserId: serverMessage.browserId, text: serverMessage.text })
+                    ) {
+                        return [];
+                    }
+                    return [m];
+                });
+            }
+            return prev.map((m) => (m.id === messageId ? { ...m, localStatus: status === "sent" ? undefined : status } : m));
+        });
+    };
 
     return (
         <div
@@ -291,7 +529,7 @@ export default function ChatView() {
                 {/* Back button (mobile) */}
                 <button
                     onClick={() => navigate("/")}
-                    className="md:hidden p-1 text-gray-400 hover:text-white transition"
+                    className="lg:hidden p-1 text-gray-400 hover:text-white transition"
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -368,6 +606,52 @@ export default function ChatView() {
                     </svg>
                 </button>
             </div>
+            {showWeakKeyWarning && (
+                <div className="px-4 py-2 bg-amber-500/15 border-b border-amber-400/30 text-amber-200 text-xs flex items-start justify-between gap-3 shrink-0">
+                    <span>
+                        This chat key is weak (less than {MIN_CHAT_KEY_LENGTH} characters). We strongly recommend changing to a longer, harder-to-guess chat key.
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setShowWeakKeyWarning(false)}
+                        className="text-amber-100 hover:text-white transition shrink-0"
+                        title="Dismiss warning"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
+            {uploadProgress && (
+                <div className="px-4 py-2 bg-[#0e1621]/40 border-b border-[#0e1621] shrink-0 z-10">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-gray-300 truncate">
+                            Uploading {uploadProgress.index}/{uploadProgress.total}: {uploadProgress.fileName}
+                        </span>
+                        <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-[#4ea4f6]">{uploadPercent}%</span>
+                            <button
+                                type="button"
+                                onClick={() => window.dispatchEvent(new CustomEvent("sc-chat-cancel-upload", { detail: { chatId } }))}
+                                className="text-red-300 hover:text-red-200 transition"
+                                title="Cancel upload"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-[#243447] overflow-hidden">
+                        <div className="h-full bg-[#4ea4f6] transition-all" style={{ width: `${uploadPercent}%` }} />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                        <span>
+                            {formatMb(uploadProgress.loaded)} / {formatMb(uploadProgress.fileSize)} MB
+                        </span>
+                        <span>
+                            Total {formatMb(uploadProgress.totalLoaded)} / {formatMb(uploadProgress.totalSize)} MB
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {/* Voice call overlay (when in call) */}
             {voice.isInCall && (
@@ -410,15 +694,27 @@ export default function ChatView() {
             )}
 
             {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden relative">
                 <MessageList
                     chatId={chatId}
                     messages={messages}
+                    lastOpenedAt={lastOpenedBeforeSession}
                     setMessages={setMessages}
                     onReply={setReplyTo}
                     onEdit={setEditingMessage}
                     onDelete={handleDeleteMessage}
+                    onRetryMessage={setRetryMessage}
+                    onForwardSelected={handleForwardSelected}
+                    onDragOver={handleChatDragOver}
+                    onDragEnter={handleChatDragEnter}
+                    onDragLeave={handleChatDragLeave}
+                    onDrop={handleChatDrop}
                 />
+                {isDraggingFiles && (
+                    <div className="absolute inset-3 border-2 border-dashed border-[#4ea4f6] bg-[#17212b]/75 rounded-xl pointer-events-none flex items-center justify-center z-20">
+                        <span className="text-[#4ea4f6] font-medium text-sm">Drop files to attach</span>
+                    </div>
+                )}
             </div>
 
             {/* Typing indicator */}
@@ -435,9 +731,16 @@ export default function ChatView() {
                 onClearReply={() => setReplyTo(null)}
                 editingMessage={editingMessage}
                 onClearEdit={() => setEditingMessage(null)}
+                forwardingMessages={forwardingMessages}
+                onClearForward={() => setForwardingMessages([])}
                 messages={messages}
                 emojiPickerOpen={emojiPickerOpen}
                 onEmojiPickerChange={setEmojiPickerOpen}
+                onEdit={setEditingMessage}
+                onOptimisticMessageAdd={handleOptimisticMessageAdd}
+                onOptimisticMessageStatusChange={handleOptimisticMessageStatusChange}
+                retryMessage={retryMessage}
+                onRetryHandled={() => setRetryMessage(null)}
             />
 
             {/* Encryption key modal */}
@@ -452,6 +755,18 @@ export default function ChatView() {
                 chatId={chatId}
                 open={showShareModal}
                 onClose={() => setShowShareModal(false)}
+            />
+
+            <ForwardModal
+                open={showForwardModal}
+                onClose={() => {
+                    setShowForwardModal(false);
+                    setForwardingMessages([]);
+                }}
+                chats={chats}
+                currentChatId={chatId}
+                selectedCount={forwardingMessages.length}
+                onSelectChat={handleForwardToChat}
             />
         </div>
     );

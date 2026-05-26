@@ -229,6 +229,13 @@ export function getEncryptionKeys(): EncryptionKeys {
 
 export const DEFAULT_ENCRYPTION_KEY = 'securechat-default-key-2024';
 
+export function generateSecureRandomKey(byteLength = 32): string {
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 export function getEncryptionKey(chatId: string): string {
     return getEncryptionKeys()[chatId] || DEFAULT_ENCRYPTION_KEY;
 }
@@ -343,6 +350,7 @@ export function setDraft(chatId: string, text: string) {
 // ─── Per-chat display name ───
 
 const CHAT_DISPLAY_NAMES_KEY = "sc_chat_display_names";
+const ADMIN_NOTIFICATIONS_SEEN_KEY = "sc_admin_notifications_seen";
 
 export function getChatDisplayName(chatId: string): string {
     const raw = localStorage.getItem(CHAT_DISPLAY_NAMES_KEY);
@@ -371,6 +379,30 @@ export function setChatDisplayName(chatId: string, name: string) {
         delete names[chatId];
     }
     localStorage.setItem(CHAT_DISPLAY_NAMES_KEY, JSON.stringify(names));
+}
+
+export function getSeenAdminNotificationIds(): number[] {
+    const raw = localStorage.getItem(ADMIN_NOTIFICATIONS_SEEN_KEY);
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0);
+    } catch {
+        return [];
+    }
+}
+
+export function markAdminNotificationsSeen(ids: number[]): number[] {
+    const existing = new Set(getSeenAdminNotificationIds());
+    ids.forEach((id) => {
+        if (Number.isFinite(id) && id > 0) existing.add(id);
+    });
+    const merged = Array.from(existing.values()).sort((a, b) => a - b);
+    localStorage.setItem(ADMIN_NOTIFICATIONS_SEEN_KEY, JSON.stringify(merged));
+    return merged;
 }
 
 // ─── PV (Private) Chat Key Mapping ───

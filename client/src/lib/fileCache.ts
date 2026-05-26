@@ -120,6 +120,12 @@ async function getCachedFileEntry(url: string): Promise<CachedFileEntry | null> 
     }
 }
 
+/** Check whether a file URL exists in IndexedDB cache (encrypted or decrypted). */
+export async function hasCachedFile(url: string): Promise<boolean> {
+    const entry = await getCachedFileEntry(url);
+    return entry !== null;
+}
+
 /** Store a file entry in the IndexedDB cache with its decrypted flag. */
 async function setCachedFileEntry(url: string, data: ArrayBuffer, decrypted: boolean): Promise<void> {
     try {

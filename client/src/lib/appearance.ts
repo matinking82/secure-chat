@@ -351,7 +351,8 @@ export function sanitizeAppearanceSettings(input?: Partial<AppearanceSettings>):
         customBackgroundImage: typeof merged.customBackgroundImage === "string" ? merged.customBackgroundImage : "",
         useCustomBackground: Boolean(merged.useCustomBackground),
         backgroundDim: clamp(Number(merged.backgroundDim) || 0, 0, 70),
-        backgroundBlur: clamp(Number(merged.backgroundBlur) || 0, 0, 24),
+        // Wallpaper blur is disabled to avoid chat list rendering issues.
+        backgroundBlur: 0,
         backgroundMotion: merged.backgroundMotion !== false,
         interfaceDensity: DENSITY_IDS.has(merged.interfaceDensity)
             ? merged.interfaceDensity
@@ -392,8 +393,8 @@ export function buildAppearanceStyle(input?: Partial<AppearanceSettings>): Recor
         "--sc-chat-effect": effect,
         "--sc-chat-dim": `${appearance.backgroundDim / 100}`,
         "--sc-chat-dim-strong": `${Math.min(0.92, appearance.backgroundDim / 100 + 0.12)}`,
-        "--sc-chat-blur": `${appearance.backgroundBlur}px`,
-        "--sc-chat-blur-scale": `${1 + appearance.backgroundBlur * 0.01}`,
+        "--sc-chat-blur": "0px",
+        "--sc-chat-blur-scale": "1",
         "--sc-panel-opacity": appearance.sidebarTranslucent ? "0.78" : "1",
         "--sc-panel-blur": appearance.sidebarTranslucent ? "18px" : "0px",
         "--sc-effect-strength": appearance.uiEffects ? "1" : "0",

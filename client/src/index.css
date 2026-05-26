@@ -39,6 +39,20 @@
     background: #3a6491;
 }
 
+/* Hide scrollbars on mobile/tablet while keeping scrolling enabled. */
+@media (max-width: 1024px) {
+    .sc-mobile-hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .sc-mobile-hide-scrollbar::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+    }
+}
+
 /* ─── Base styles ─── */
 html, body, #root {
     margin: 0;
@@ -292,6 +306,13 @@ body {
     transition: border-radius 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
+.sc-message-bubble[data-borderless='true'] {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+}
+
 .sc-bubbles-soft .sc-message-bubble {
     border-radius: 1.4rem !important;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
@@ -311,12 +332,12 @@ body {
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
 }
 
-.sc-bubbles-glass .sc-message-bubble[data-own='true'] {
+.sc-bubbles-glass .sc-message-bubble[data-own='true']:not([data-borderless='true']) {
     background-color: color-mix(in srgb, var(--sc-message-out) 72%, transparent) !important;
     border-color: color-mix(in srgb, var(--sc-accent) 28%, transparent);
 }
 
-.sc-bubbles-glass .sc-message-bubble[data-own='false'] {
+.sc-bubbles-glass .sc-message-bubble[data-own='false']:not([data-borderless='true']) {
     background-color: color-mix(in srgb, var(--sc-message-in) 76%, transparent) !important;
     border-color: rgba(255, 255, 255, 0.08);
 }

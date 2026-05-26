@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import type { VoiceParticipant } from "../../types";
 
 interface VideoCallOverlayProps {
@@ -86,24 +86,36 @@ function VideoTile({
     // Video is shown only when the signaled flag says ON and we have a stream
     const showVideo = videoEnabled && stream && hasLiveTrack;
 
-    // Ref callback: sets srcObject every time the <video> element mounts.
-    const videoRefCb = useCallback(
-        (el: HTMLVideoElement | null) => {
-            if (el && stream) {
-                el.srcObject = stream;
-            }
-        },
-        [stream, showVideo]
-    );
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+
+    useEffect(() => {
+        const el = videoRef.current;
+        if (!el) return;
+
+        if (showVideo && stream) {
+            if (el.srcObject !== stream) el.srcObject = stream;
+            void el.play().catch((err) => {
+                console.warn("Video playback failed in call tile:", err);
+            });
+            return;
+        }
+
+        if (el.srcObject) el.srcObject = null;
+    }, [showVideo, stream]);
 
     return (
         <div className="relative rounded-2xl overflow-hidden bg-[#1a2735] flex items-center justify-center min-h-0">
             {showVideo ? (
                 <video
-                    ref={videoRefCb}
+                    ref={videoRef}
                     autoPlay
                     playsInline
                     muted={isLocal}
+                    onLoadedMetadata={(e) => {
+                        void e.currentTarget.play().catch((err) => {
+                            console.warn("Video metadata playback failed in call tile:", err);
+                        });
+                    }}
                     className={`w-full h-full object-cover ${isLocal ? "scale-x-[-1]" : ""}`}
                 />
             ) : (

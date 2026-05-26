@@ -264,7 +264,7 @@ export function useVoiceChat({ socket, chatId, browserId, displayName }: UseVoic
                             socket?.emit("voice_offer", {
                                 chatId: chatIdRef.current,
                                 targetSocketId: socketId,
-                                sdp: peer.pc.localDescription,
+                                sdp: offer,
                             });
                         } catch (err) {
                             console.error("Video renegotiation error:", err);

@@ -340,6 +340,21 @@ export function chaarBargStartRound(state: ChaarBargState): ChaarBargState {
     const center = deck.slice(8, 12);
     const drawPile = deck.slice(12);
 
+    // Initial center cards cannot include Jacks:
+    // replace each Jack with a draw card and insert that Jack
+    // back into a random position in the draw pile.
+    while (center.some(isJack) && drawPile.length > 0) {
+        const jackIndex = center.findIndex(isJack);
+        const replacement = drawPile.shift();
+        if (!replacement) break;
+
+        const jackCard = center[jackIndex];
+        center[jackIndex] = replacement;
+
+        const insertAt = Math.floor(Math.random() * (drawPile.length + 1));
+        drawPile.splice(insertAt, 0, jackCard);
+    }
+
     return {
         ...state,
         hands: [h1, h2],

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
     EMOJI_CATEGORIES,
     unifiedToNative,
@@ -44,9 +44,22 @@ export default function EmojiPicker({ onSelect, onClose, onSendGif, onSendSticke
     const gifInputRef = useRef<HTMLInputElement>(null);
     const stickerInputRef = useRef<HTMLInputElement>(null);
 
-    const isDesktop = useMemo(() =>
+    const [isDesktop, setIsDesktop] = useState(() =>
         !(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-        ('ontouchstart' in window && window.innerWidth < 768)), []);
+        ('ontouchstart' in window && window.innerWidth < 1024))
+    );
+
+    useEffect(() => {
+        const detectDesktop = () => {
+            setIsDesktop(
+                !(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                ('ontouchstart' in window && window.innerWidth < 1024))
+            );
+        };
+
+        window.addEventListener('resize', detectDesktop);
+        return () => window.removeEventListener('resize', detectDesktop);
+    }, []);
 
     const allCategories = [frequentCategory, ...EMOJI_CATEGORIES];
 

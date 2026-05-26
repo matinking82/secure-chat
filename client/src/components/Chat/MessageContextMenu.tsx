@@ -11,9 +11,12 @@ interface MessageContextMenuProps {
     decryptedText: string;
     decryptedFileUrl: string | null;
     onReply: (msg: ChatMessage) => void;
+    onSelect?: (msgId: number) => void;
     onEdit?: (msg: ChatMessage) => void;
     onDelete?: (msg: ChatMessage) => void;
+    onRetry?: (msg: ChatMessage) => void;
     onReact?: (emoji: string) => void;
+    onOpenFullReactions?: (position: { x: number; y: number }) => void;
     onSaveToCollection?: () => void;
     onClose: () => void;
     position: { x: number; y: number };
@@ -24,9 +27,12 @@ export default function MessageContextMenu({
     decryptedText,
     decryptedFileUrl,
     onReply,
+    onSelect,
     onEdit,
     onDelete,
+    onRetry,
     onReact,
+    onOpenFullReactions,
     onSaveToCollection,
     onClose,
     position,
@@ -78,8 +84,18 @@ export default function MessageContextMenu({
         onClose();
     };
 
+    const handleSelect = () => {
+        onSelect?.(msg.id);
+        onClose();
+    };
+
     const handleDelete = () => {
         if (onDelete) onDelete(msg);
+        onClose();
+    };
+
+    const handleRetry = () => {
+        onRetry?.(msg);
         onClose();
     };
 
@@ -132,6 +148,20 @@ export default function MessageContextMenu({
                                 <AppleEmoji native={emoji} size={22} />
                             </button>
                         ))}
+                        {onOpenFullReactions && (
+                            <button
+                                onClick={(e) => {
+                                    onOpenFullReactions({ x: e.clientX, y: e.clientY });
+                                    onClose();
+                                }}
+                                className="hover:scale-110 transition-transform p-1 text-gray-300 hover:text-white"
+                                title="More reactions"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -146,6 +176,19 @@ export default function MessageContextMenu({
                     </svg>
                     Reply
                 </button>
+
+                {onSelect && (
+                    <button
+                        onClick={handleSelect}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition text-left"
+                    >
+                        <svg className="w-[18px] h-[18px] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        Select
+                    </button>
+                )}
 
                 {/* Edit (only for sender's messages with text) */}
                 {isMine && decryptedText && onEdit && (
@@ -200,6 +243,19 @@ export default function MessageContextMenu({
                                 d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                         </svg>
                         {msg.fileType === "gif" ? "Save to my GIFs" : "Save to my Stickers"}
+                    </button>
+                )}
+
+                {isMine && msg.localStatus === "failed" && onRetry && (
+                    <button
+                        onClick={handleRetry}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-amber-300 hover:bg-amber-500/10 transition text-left"
+                    >
+                        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M4 4v5h.582m14.356 2A8 8 0 106.582 9m0 0H9m11 11v-5h-.581" />
+                        </svg>
+                        Retry
                     </button>
                 )}
 

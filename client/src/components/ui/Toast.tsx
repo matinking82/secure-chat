@@ -17,7 +17,9 @@ export default function Toast() {
                                hover:bg-[#3a6491] transition"
                     onClick={() => {
                         dismissNotification(n.id);
-                        navigate(`/chat/${n.chatId}`);
+                        if (n.chatId) {
+                            navigate(`/chat/${n.chatId}`);
+                        }
                     }}
                 >
                     <div className="w-8 h-8 rounded-full bg-[#4ea4f6] flex items-center justify-center text-sm font-bold shrink-0">

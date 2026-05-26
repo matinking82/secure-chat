@@ -1,5 +1,5 @@
-import { useEffect, useMemo, type CSSProperties } from "react";
-import { Routes, Route, useLocation, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Navigate, Routes, Route, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Sidebar from "./components/Sidebar/Sidebar";
 import ChatView from "./components/Chat/ChatView";
 import GlobalAudioPlayer from "./components/Chat/GlobalAudioPlayer";
@@ -7,6 +7,7 @@ import SettingsView from "./components/Settings/SettingsView";
 import ChatSettings from "./components/Settings/ChatSettings";
 import Toast from "./components/ui/Toast";
 import NamePromptModal from "./components/ui/NamePromptModal";
+import FirstRunGuideModal from "./components/ui/FirstRunGuideModal";
 import { useUser } from "./contexts/UserContext";
 import { buildAppearanceStyle } from "./lib/appearance";
 import {
@@ -14,17 +15,141 @@ import {
     requestNotificationPermission,
     subscribeAllChats,
 } from "./lib/push";
+import {
+    generatePvChatKey,
+    getSavedChats,
+    getPvChatKey,
+    setPvChatKey,
+    setEncryptionKey,
+} from "./lib/storage";
+import { useChat } from "./contexts/ChatContext";
+import { fetchChatInvite } from "./lib/api";
+import { decryptText } from "./lib/crypto";
+
+const FIRST_RUN_GUIDE_SEEN_KEY = "sc_first_run_guide_seen";
+const ANONYMOUS_DISPLAY_NAME = "Anonymous";
+const MAX_PV_NAME_LENGTH = 40;
+
+function normalizePvName(raw: string | null): string {
+    if (!raw) return "";
+    return raw
+        .replace(/[^\p{L}\p{N}\p{M}\s._-]/gu, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, MAX_PV_NAME_LENGTH);
+}
 
 /** Wrapper that keys ChatView by chatId so React fully remounts on chat switch */
 function ChatViewKeyed() {
     const { chatId } = useParams<{ chatId: string }>();
+    if (!chatId) return <Navigate to="/" replace />;
+    const joined = getSavedChats().some((chat) => chat.chatId === chatId);
+    if (!joined) return <Navigate to="/" replace />;
     return <ChatView key={chatId} />;
+}
+
+function PvRouteHandler() {
+    const { browserId } = useParams<{ browserId?: string }>();
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const { addChat } = useChat();
+    const { settings } = useUser();
+    const handledRef = useRef(false);
+
+    useEffect(() => {
+        if (handledRef.current) return;
+        if (!browserId) {
+            handledRef.current = true;
+            navigate("/", { replace: true });
+            return;
+        }
+        const firstRunGuideSeen = Boolean(localStorage.getItem(FIRST_RUN_GUIDE_SEEN_KEY));
+        const hasDisplayName =
+            settings.displayName.trim() !== "" && settings.displayName !== ANONYMOUS_DISPLAY_NAME;
+        if (!firstRunGuideSeen || !hasDisplayName) {
+            return;
+        }
+
+        const existing = getPvChatKey(browserId);
+        const pvChatId = existing?.chatKey || generatePvChatKey();
+        if (!existing) {
+            setPvChatKey(browserId, pvChatId, false);
+        }
+
+        const requestedName = normalizePvName(searchParams.get("name"));
+        handledRef.current = true;
+        addChat(pvChatId, `PV: ${requestedName || browserId}`);
+        navigate(`/chat/${pvChatId}`, { replace: true });
+    }, [addChat, browserId, navigate, searchParams, settings.displayName]);
+
+    return null;
+}
+
+function JoinInviteRouteHandler() {
+    const { id } = useParams<{ id?: string }>();
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const { addChat } = useChat();
+    const handledRef = useRef(false);
+
+    useEffect(() => {
+        const notifyInvalidInvite = () => {
+            window.dispatchEvent(
+                new CustomEvent("sc-system-toast", {
+                    detail: { id: Date.now(), chatId: "", name: "System", preview: "Invalid or expired invite link." },
+                })
+            );
+        };
+        if (handledRef.current) return;
+        const inviteId = id?.trim();
+        const inviteKey = searchParams.get("key") || "";
+        if (!inviteId || !inviteKey) {
+            handledRef.current = true;
+            notifyInvalidInvite();
+            navigate("/", { replace: true });
+            return;
+        }
+
+        handledRef.current = true;
+        const run = async () => {
+            try {
+                const invite = await fetchChatInvite(inviteId);
+                const decrypted = await decryptText(invite.data, inviteKey, "invite-link");
+                if (decrypted.failed) {
+                    notifyInvalidInvite();
+                    navigate("/", { replace: true });
+                    return;
+                }
+                const parsed = JSON.parse(decrypted.text) as {
+                    chatKey?: string;
+                    encryptionKey?: string;
+                };
+                if (!parsed.chatKey || !parsed.encryptionKey) {
+                    notifyInvalidInvite();
+                    navigate("/", { replace: true });
+                    return;
+                }
+                setEncryptionKey(parsed.chatKey, parsed.encryptionKey);
+                addChat(parsed.chatKey);
+                navigate(`/chat/${parsed.chatKey}`, { replace: true });
+            } catch {
+                notifyInvalidInvite();
+                navigate("/", { replace: true });
+            }
+        };
+        void run();
+    }, [addChat, id, navigate, searchParams]);
+
+    return null;
 }
 
 export default function App() {
     const location = useLocation();
     const { settings, updateSettings } = useUser();
     const appearance = settings.appearance;
+    const [showFirstRunGuide, setShowFirstRunGuide] = useState(() => {
+        return !localStorage.getItem(FIRST_RUN_GUIDE_SEEN_KEY);
+    });
 
     const appearanceStyle = useMemo(
         () => buildAppearanceStyle(appearance) as CSSProperties,
@@ -80,8 +205,8 @@ export default function App() {
                 {/* Sidebar: always visible on desktop, hidden on mobile when in a chat */}
                 <div
                     className={`
-                        w-full md:w-[320px] lg:w-[360px] md:flex-shrink-0 h-full relative
-                        ${isInSubpage ? "hidden md:flex" : "flex"}
+                        w-full lg:w-[320px] xl:w-[360px] lg:flex-shrink-0 h-full relative
+                        ${isInSubpage ? "hidden lg:flex" : "flex"}
                         flex-col
                     `}
                 >
@@ -91,14 +216,17 @@ export default function App() {
                 {/* Main content area */}
                 <div
                     className={`
-                        flex-1 h-full min-h-0 min-w-0 w-full md:w-auto
-                        ${isInSubpage ? "flex" : "hidden md:flex"}
+                        flex-1 h-full min-h-0 min-w-0 w-full lg:w-auto
+                        ${isInSubpage ? "flex" : "hidden lg:flex"}
                         flex-col
                     `}
                 >
                     <div className="flex-1 min-h-0">
                         <Routes>
                             <Route path="/chat/:chatId" element={<ChatViewKeyed />} />
+                            <Route path="/join/:id" element={<JoinInviteRouteHandler />} />
+                            <Route path="/pv" element={<PvRouteHandler />} />
+                            <Route path="/pv/:browserId" element={<PvRouteHandler />} />
                             <Route path="/settings" element={<SettingsView />} />
                             <Route path="/settings/:chatId" element={<ChatSettings />} />
                             <Route
@@ -137,8 +265,16 @@ export default function App() {
             {/* Toast notifications */}
             <Toast />
 
+            <FirstRunGuideModal
+                open={showFirstRunGuide && settings.displayName === ANONYMOUS_DISPLAY_NAME}
+                onUnderstand={() => {
+                    localStorage.setItem(FIRST_RUN_GUIDE_SEEN_KEY, "1");
+                    setShowFirstRunGuide(false);
+                }}
+            />
+
             {/* Name prompt on first visit */}
-            <NamePromptModal />
+            <NamePromptModal enabled={!showFirstRunGuide} />
         </div>
     );
 }

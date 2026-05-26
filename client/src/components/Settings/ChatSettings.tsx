@@ -4,6 +4,8 @@ import { useChat } from "../../contexts/ChatContext";
 import { useUser } from "../../contexts/UserContext";
 import { getEncryptionKey, setEncryptionKey, getChatDisplayName, setChatDisplayName } from "../../lib/storage";
 import { subscribeChatToPush, unsubscribeChatFromPush, getNotificationPermission } from "../../lib/push";
+import { createTelegramBotNotification, deleteTelegramBotNotification, fetchTelegramBotNotifications } from "../../lib/api";
+import type { TelegramBotNotification } from "../../types";
 import AppleEmoji from "../ui/AppleEmoji";
 
 // Consistent color palette for chat avatars
@@ -34,6 +36,15 @@ export default function ChatSettings() {
     const [showKey, setShowKey] = useState(false);
     const [saved, setSaved] = useState(false);
     const [chatDisplayNameVal, setChatDisplayNameVal] = useState(() => getChatDisplayName(chatId || ""));
+    const [botNotifications, setBotNotifications] = useState<TelegramBotNotification[]>([]);
+    const [botNotificationError, setBotNotificationError] = useState("");
+    const [loadingBotNotifications, setLoadingBotNotifications] = useState(false);
+    const [showBotNotificationModal, setShowBotNotificationModal] = useState(false);
+    const [botNotificationName, setBotNotificationName] = useState("");
+    const [botNotificationUserId, setBotNotificationUserId] = useState("");
+    const [botNotificationToken, setBotNotificationToken] = useState("");
+    const [savingBotNotification, setSavingBotNotification] = useState(false);
+    const [deletingBotNotificationId, setDeletingBotNotificationId] = useState<number | null>(null);
 
     useEffect(() => {
         if (!chatId) return;
@@ -43,6 +54,16 @@ export default function ChatSettings() {
         setShowKey(false);
         setSaved(false);
     }, [chat?.label, chatId]);
+
+    useEffect(() => {
+        if (!chatId) return;
+        setLoadingBotNotifications(true);
+        setBotNotificationError("");
+        fetchTelegramBotNotifications(chatId, settings.browserId)
+            .then((items) => setBotNotifications(items))
+            .catch(() => setBotNotificationError("Failed to load bot notifications"))
+            .finally(() => setLoadingBotNotifications(false));
+    }, [chatId, settings.browserId]);
 
     if (!chatId) return null;
 
@@ -58,6 +79,46 @@ export default function ChatSettings() {
         if (confirm("Remove this chat from your list? You can rejoin later with the same key.")) {
             removeChat(chatId);
             navigate("/");
+        }
+    };
+
+    const handleSaveBotNotification = async () => {
+        const name = botNotificationName.trim();
+        const userId = botNotificationUserId.trim();
+        const token = botNotificationToken.trim();
+        if (!name || !userId || !token) {
+            setBotNotificationError("Notification name, User ID, and Bot Token are required");
+            return;
+        }
+        setSavingBotNotification(true);
+        setBotNotificationError("");
+        try {
+            await createTelegramBotNotification(chatId, { browserId: settings.browserId, name, userId, botToken: token });
+            const items = await fetchTelegramBotNotifications(chatId, settings.browserId);
+            setBotNotifications(items);
+            setShowBotNotificationModal(false);
+            setBotNotificationName("");
+            setBotNotificationUserId("");
+            setBotNotificationToken("");
+        } catch {
+            setBotNotificationError("Failed to save bot notification");
+        } finally {
+            setSavingBotNotification(false);
+        }
+    };
+
+    const handleDeleteBotNotification = async (notificationId: number) => {
+        if (!confirm("Delete this bot notification?")) return;
+        setDeletingBotNotificationId(notificationId);
+        setBotNotificationError("");
+        try {
+            await deleteTelegramBotNotification(chatId, notificationId, settings.browserId);
+            const items = await fetchTelegramBotNotifications(chatId, settings.browserId);
+            setBotNotifications(items);
+        } catch {
+            setBotNotificationError("Failed to delete bot notification");
+        } finally {
+            setDeletingBotNotificationId(null);
         }
     };
 
@@ -205,6 +266,51 @@ export default function ChatSettings() {
                     </div>
                 </div>
 
+                <div className="bg-[#17212b] rounded-xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-sm uppercase tracking-wider text-[#4ea4f6] font-medium">
+                            Bot Notifications
+                        </h2>
+                        <button
+                            onClick={() => {
+                                setBotNotificationError("");
+                                setShowBotNotificationModal(true);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-[#4ea4f6] hover:bg-[#3d93e5] text-white text-sm transition"
+                        >
+                            Add
+                        </button>
+                    </div>
+                    {loadingBotNotifications ? (
+                        <div className="text-xs text-gray-500">Loading...</div>
+                    ) : botNotifications.length === 0 ? (
+                        <div className="text-xs text-gray-500">No bot notifications saved for this chat</div>
+                    ) : (
+                        <div className="space-y-2">
+                            {botNotifications.map((item) => (
+                                <div key={item.id} className="rounded-lg bg-[#0e1621] border border-[#2b5278]/50 p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="text-sm text-white font-medium break-words">{item.name}</div>
+                                            <div className="text-xs text-gray-500 mt-1 break-all">User ID: {item.userId}</div>
+                                        </div>
+                                        <button
+                                            onClick={() => void handleDeleteBotNotification(item.id)}
+                                            disabled={deletingBotNotificationId === item.id}
+                                            className="shrink-0 px-2.5 py-1 text-xs rounded-md border border-red-400/40 text-red-300 hover:bg-red-500/10 disabled:opacity-60"
+                                        >
+                                            {deletingBotNotificationId === item.id ? "Deleting..." : "Delete"}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {botNotificationError && (
+                        <div className="text-xs text-red-400">{botNotificationError}</div>
+                    )}
+                </div>
+
                 {/* Save button */}
                 <button
                     onClick={handleSave}
@@ -228,6 +334,66 @@ export default function ChatSettings() {
                     </button>
                 </div>
             </div>
+            {showBotNotificationModal && (
+                <div
+                    className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onClick={() => setShowBotNotificationModal(false)}
+                >
+                    <div
+                        className="rounded-2xl border border-white/10 p-6 w-full max-w-sm mx-4 space-y-4 shadow-2xl bg-[#17212b]"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-white font-medium">Add Bot Notification</h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-gray-400 text-sm block mb-1.5">Name</label>
+                                <input
+                                    type="text"
+                                    value={botNotificationName}
+                                    onChange={(e) => setBotNotificationName(e.target.value)}
+                                    className="w-full bg-[#0e1621] text-white border border-[#2b5278]/50 rounded-lg px-3 py-2 focus:outline-none focus:border-[#4ea4f6]"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-gray-400 text-sm block mb-1.5">User ID</label>
+                                <input
+                                    type="text"
+                                    value={botNotificationUserId}
+                                    onChange={(e) => setBotNotificationUserId(e.target.value)}
+                                    className="w-full bg-[#0e1621] text-white border border-[#2b5278]/50 rounded-lg px-3 py-2 focus:outline-none focus:border-[#4ea4f6]"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-gray-400 text-sm block mb-1.5">Bot Token</label>
+                                <input
+                                    type="password"
+                                    value={botNotificationToken}
+                                    onChange={(e) => setBotNotificationToken(e.target.value)}
+                                    className="w-full bg-[#0e1621] text-white border border-[#2b5278]/50 rounded-lg px-3 py-2 focus:outline-none focus:border-[#4ea4f6]"
+                                />
+                            </div>
+                        </div>
+                        {botNotificationError && (
+                            <div className="text-xs text-red-400">{botNotificationError}</div>
+                        )}
+                        <div className="flex gap-3 pt-1">
+                            <button
+                                onClick={() => setShowBotNotificationModal(false)}
+                                className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg text-gray-300 hover:bg-white/10 transition border border-white/10"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => void handleSaveBotNotification()}
+                                disabled={savingBotNotification}
+                                className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-[#4ea4f6] text-white hover:bg-[#3d93e5] transition disabled:opacity-60"
+                            >
+                                {savingBotNotification ? "Saving..." : "Save"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

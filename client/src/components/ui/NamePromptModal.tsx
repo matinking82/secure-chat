@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useUser } from "../../contexts/UserContext";
 
-export default function NamePromptModal() {
+interface NamePromptModalProps {
+    enabled?: boolean;
+}
+
+export default function NamePromptModal({ enabled = true }: NamePromptModalProps) {
     const { settings, updateSettings } = useUser();
     const [name, setName] = useState("");
     const [open, setOpen] = useState(() => {
@@ -9,6 +13,7 @@ export default function NamePromptModal() {
         return settings.displayName === "Anonymous";
     });
 
+    if (!enabled) return null;
     if (!open) return null;
 
     const handleSubmit = (e: React.FormEvent) => {
